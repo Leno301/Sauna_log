@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sauna Log - ととのい記録</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Outfit:wght@400;600;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- FullCalendar -->
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="logo">
+                <i data-lucide="waves" class="logo-icon"></i>
+                <h1>Sauna Log</h1>
+            </div>
+            <p class="subtitle">究極のととのい体験を記録しよう</p>
+        </header>
+
+        <main>
+            <!-- 入力フォーム -->
+            <section class="card form-section">
+                <h2><i data-lucide="pen-tool" class="icon-sm"></i> 新しい記録</h2>
+                <form id="saunaForm">
+                    <div class="form-group">
+                        <label for="facilityName">施設名</label>
+                        <input type="text" id="facilityName" placeholder="例: かるまる池袋" required>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="visitDate">日付</label>
+                            <input type="date" id="visitDate" required>
+                        </div>
+                        <div class="rating-group">
+                            <label>ととのい度 (平均) <span id="ratingValue" class="rating-display">-</span>/10</label>
+                            <div class="rating-note">各セットの入力から自動計算されます</div>
+                            <input type="hidden" id="rating" value="">
+                        </div>
+                        <div class="rating-group">
+                            <label for="overallRating">総合評価 <span id="overallRatingValue"
+                                    class="rating-display">5</span>/10</label>
+                            <div class="rating-control">
+                                <span class="rating-label-min">1</span>
+                                <input type="range" id="overallRating" min="1" max="10" step="1" value="5">
+                                <span class="rating-label-max">10</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="sets-header">
+                            <label>サウナ時間 (分/セット)</label>
+                            <button type="button" id="addSetBtn" class="add-set-btn">
+                                <i data-lucide="plus-circle" class="icon-xs"></i> 追加
+                            </button>
+                        </div>
+                        <div id="setsContainer" class="sets-container">
+                            <!-- Sets will be added here by JS -->
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="memo">感想メモ</label>
+                        <textarea id="memo" rows="3" placeholder="最高のアウフグースでした..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>写真</label>
+                        <div class="image-upload-area" id="dropZone">
+                            <i data-lucide="image-plus" class="upload-icon"></i>
+                            <p>クリックまたはドラッグ＆ドロップで写真を追加</p>
+                            <input type="file" id="imageInput" accept="image/*" hidden>
+                            <div id="previewArea" class="preview-area hidden">
+                                <img id="imagePreview" src="" alt="Preview">
+                                <button type="button" id="removeImageBtn" class="remove-btn"><i
+                                        data-lucide="x"></i></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="submit-btn">
+                        <i data-lucide="save"></i> 記録する
+                    </button>
+                </form>
+            </section>
+
+            <section class="history-section">
+                <div class="section-header-row">
+                    <h2><i data-lucide="history" class="icon-sm"></i> 過去のサ活</h2>
+                    <div class="view-tabs">
+                        <button id="listViewBtn" class="view-tab active">
+                            <i data-lucide="list" class="icon-xs"></i> リスト
+                        </button>
+                        <button id="calendarViewBtn" class="view-tab">
+                            <i data-lucide="calendar" class="icon-xs"></i> カレンダー
+                        </button>
+                    </div>
+                </div>
+
+                <div id="listView" class="view-content active">
+                    <div id="saunaList" class="sauna-list">
+                        <!-- Javascriptでここにカードが追加されます -->
+                        <div class="empty-state">
+                            <p>まだ記録がありません。<br>今日のととのいを記録しましょう！</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="calendarView" class="view-content hidden">
+                    <div id="calendar"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+
+</html>
