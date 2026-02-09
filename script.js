@@ -15,12 +15,52 @@ document.addEventListener('DOMContentLoaded', () => {
     const setsContainer = document.getElementById('setsContainer');
     const addSetBtn = document.getElementById('addSetBtn');
 
+    // Backup Elements
+    const exportBtn = document.getElementById('exportBtn');
+    const importBtn = document.getElementById('importBtn');
+    const importFile = document.getElementById('importFile');
+
     // Tab Elements
     const listViewBtn = document.getElementById('listViewBtn');
     const calendarViewBtn = document.getElementById('calendarViewBtn');
     const listView = document.getElementById('listView');
     const calendarView = document.getElementById('calendarView');
     let calendar = null; // FullCalendar instance
+
+    // Modal Elements
+    const imageModal = document.getElementById('imageModal');
+    const fullImage = document.getElementById('fullImage');
+    const closeModal = document.querySelector('.close-modal');
+
+    if (imageModal && closeModal) {
+        closeModal.addEventListener('click', () => {
+            imageModal.classList.remove('active');
+            imageModal.classList.add('hidden');
+        });
+
+        imageModal.addEventListener('click', (e) => {
+            if (e.target === imageModal) {
+                imageModal.classList.remove('active');
+                imageModal.classList.add('hidden');
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && imageModal.classList.contains('active')) {
+                imageModal.classList.remove('active');
+                imageModal.classList.add('hidden');
+            }
+        });
+    }
+
+    // Expose openImageModal to window for onclick attribute
+    window.openImageModal = function (src) {
+        if (imageModal && fullImage) {
+            fullImage.src = src;
+            imageModal.classList.remove('hidden');
+            imageModal.classList.add('active');
+        }
+    };
 
     // Default Date
     visitDateInput.valueAsDate = new Date();
@@ -172,8 +212,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // Calculate Average
         const avgRating = setWithRatingCount > 0 ? (totalRating / setWithRatingCount).toFixed(1) : 0;
 
-        const newRecord = {
-            id: Date.now().toString(),
+        // Check if editing
+        const editId = form.dataset.editId;
+
+        const recordData = {
+            id: editId || Date.now().toString(),
             facilityName: document.getElementById('facilityName').value,
             visitDate: document.getElementById('visitDate').value,
             rating: avgRating, // Calculated average
@@ -181,10 +224,19 @@ document.addEventListener('DOMContentLoaded', () => {
             sets: setsData, // Array of objects {time, rating}
             memo: document.getElementById('memo').value,
             image: currentImageBase64,
-            createdAt: new Date().toISOString()
+            createdAt: editId ? (getRecords().find(r => r.id === editId)?.createdAt || new Date().toISOString()) : new Date().toISOString(),
+            updatedAt: new Date().toISOString()
         };
 
-        saveRecord(newRecord);
+        if (editId) {
+            updateRecord(recordData);
+            delete form.dataset.editId;
+            const submitBtn = form.querySelector('.submit-btn');
+            submitBtn.innerHTML = '<i data-lucide="save"></i> 記録する';
+            // Cancel edit button removal if implemented
+        } else {
+            saveRecord(recordData);
+        }
         form.reset();
         clearImage();
 
@@ -213,6 +265,15 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('sauna-log-data', JSON.stringify(records));
     }
 
+    function updateRecord(updatedRecord) {
+        const records = getRecords();
+        const index = records.findIndex(r => r.id === updatedRecord.id);
+        if (index !== -1) {
+            records[index] = updatedRecord;
+            localStorage.setItem('sauna-log-data', JSON.stringify(records));
+        }
+    }
+
     function getRecords() {
         const data = localStorage.getItem('sauna-log-data');
         return data ? JSON.parse(data) : [];
@@ -224,7 +285,64 @@ document.addEventListener('DOMContentLoaded', () => {
         const records = getRecords().filter(r => r.id !== id);
         localStorage.setItem('sauna-log-data', JSON.stringify(records));
         loadRecords();
+        updateCalendarEvents();
     }
+
+    // Backup Functions
+    exportBtn.addEventListener('click', () => {
+        const records = getRecords();
+        const dataStr = JSON.stringify(records, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+
+        const now = new Date();
+        const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `sauna_log_backup_${dateStr}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    });
+
+    importBtn.addEventListener('click', () => {
+        importFile.click();
+    });
+
+    importFile.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (!confirm('現在のデータが上書きされますがよろしいですか？\n(必要であれば先に「保存」を行ってください)')) {
+            e.target.value = ''; // Reset input
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const importedData = JSON.parse(e.target.result);
+
+                // Simple validation check (should be an array)
+                if (!Array.isArray(importedData)) {
+                    throw new Error('Invalid data format');
+                }
+
+                localStorage.setItem('sauna-log-data', JSON.stringify(importedData));
+                loadRecords();
+                updateCalendarEvents();
+                alert('データの復元が完了しました。');
+            } catch (err) {
+                console.error('Import Error:', err);
+                alert('ファイルの読み込みに失敗しました。\n正しいJSONファイルか確認してください。');
+            } finally {
+                importFile.value = ''; // Reset input so same file can be selected again if needed
+            }
+        };
+        reader.readAsText(file);
+    });
 
     // UI Rendering
     function loadRecords() {
@@ -256,7 +374,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let imageHtml = '';
         if (record.image) {
             imageHtml = `
-                <div class="log-image">
+                <div class="log-image" onclick="openImageModal('${record.image}')" style="cursor: pointer;">
                     <img src="${record.image}" alt="サウナ写真" loading="lazy">
                 </div>
             `;
@@ -321,9 +439,14 @@ document.addEventListener('DOMContentLoaded', () => {
             
             ${imageHtml}
             
-            <button class="delete-btn" onclick="document.dispatchEvent(new CustomEvent('delete-record', {detail: '${record.id}'}))">
-                削除
-            </button>
+            <div class="card-actions" style="display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end;">
+                 <button class="edit-btn" style="background: transparent; border: none; color: var(--secondary-accent); font-size: 0.8rem; cursor: pointer; opacity: 0.8;" onclick="editRecord('${record.id}')">
+                    編集
+                </button>
+                <button class="delete-btn" style="margin-top:0;" onclick="document.dispatchEvent(new CustomEvent('delete-record', {detail: '${record.id}'}))">
+                    削除
+                </button>
+            </div>
         `;
 
         return div;
@@ -417,6 +540,63 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         calendar.render();
     }
+
+    // Expose editRecord to window
+    window.editRecord = function (id) {
+        const records = getRecords();
+        const record = records.find(r => r.id === id);
+        if (!record) return;
+
+        // Populate Form
+        document.getElementById('facilityName').value = record.facilityName;
+        document.getElementById('visitDate').value = record.visitDate;
+        document.getElementById('overallRating').value = record.overallRating || 5;
+        document.getElementById('overallRatingValue').textContent = record.overallRating || 5;
+        document.getElementById('memo').value = record.memo || '';
+
+        // Handle Image
+        if (record.image) {
+            currentImageBase64 = record.image;
+            imagePreview.src = record.image;
+            previewArea.classList.remove('hidden');
+        } else {
+            clearImage();
+        }
+
+        // Handle Sets
+        setsContainer.innerHTML = ''; // Clear existing
+        if (record.sets && record.sets.length > 0) {
+            setCounter = 0; // Reset counter 
+            record.sets.forEach(set => {
+                // Handle object vs string format
+                const time = typeof set === 'object' ? set.time : set;
+                const rating = typeof set === 'object' ? set.rating : ''; // ratings might not exist in old old format
+                addSetRow(time); // This creates the row
+
+                // Now fill the rating for the last created row
+                const rows = setsContainer.querySelectorAll('.set-row');
+                const lastRow = rows[rows.length - 1];
+                if (lastRow && rating) {
+                    lastRow.querySelector('.set-rating-val').value = rating;
+                }
+            });
+            updateSetNumbers();
+        } else {
+            // Default 3 sets if none
+            setCounter = 0;
+            addSetRow();
+            addSetRow();
+            addSetRow();
+        }
+
+        // Set Edit Mode
+        form.dataset.editId = id;
+        const submitBtn = form.querySelector('.submit-btn');
+        submitBtn.innerHTML = '<i data-lucide="save"></i> 記録を更新';
+
+        // Scroll to form
+        form.scrollIntoView({ behavior: 'smooth' });
+    };
 
     function getCalendarEvents() {
         const records = getRecords();

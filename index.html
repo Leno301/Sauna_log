@@ -106,11 +106,20 @@
                             <i data-lucide="calendar" class="icon-xs"></i> カレンダー
                         </button>
                     </div>
+
+                    <div class="backup-controls" style="margin-left: 10px; display: flex; gap: 8px;">
+                        <button id="exportBtn" class="view-tab" title="保存">
+                            <i data-lucide="download" class="icon-xs"></i> 保存
+                        </button>
+                        <button id="importBtn" class="view-tab" title="復元">
+                            <i data-lucide="upload" class="icon-xs"></i> 復元
+                        </button>
+                        <input type="file" id="importFile" accept=".json" style="display: none;">
+                    </div>
                 </div>
 
                 <div id="listView" class="view-content active">
                     <div id="saunaList" class="sauna-list">
-                        <!-- Javascriptでここにカードが追加されます -->
                         <div class="empty-state">
                             <p>まだ記録がありません。<br>今日のととのいを記録しましょう！</p>
                         </div>
@@ -122,6 +131,11 @@
                 </div>
             </section>
         </main>
+    </div>
+
+    <div id="imageModal" class="modal hidden">
+        <span class="close-modal">&times;</span>
+        <img class="modal-content" id="fullImage">
     </div>
 
     <script src="script.js"></script>

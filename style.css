@@ -60,6 +60,7 @@ body {
     font-weight: 800;
     letter-spacing: -0.02em;
     background: linear-gradient(135deg, #fff 0%, var(--text-secondary) 100%);
+    background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
@@ -174,6 +175,7 @@ textarea:focus {
 
 input[type="range"] {
     flex: 1;
+    appearance: none;
     -webkit-appearance: none;
     background: transparent;
 }
@@ -514,7 +516,7 @@ input[type="range"]::-webkit-slider-runnable-track {
 .pill-rating {
     color: var(--accent-color);
     font-size: 0.8rem;
-    background: rgba(0,0,0,0.2);
+    background: rgba(0, 0, 0, 0.2);
     padding: 1px 6px;
     border-radius: 999px;
     margin-left: 4px;
@@ -589,6 +591,7 @@ input[type="range"]::-webkit-slider-runnable-track {
     padding: 4px;
     border-radius: 8px;
     gap: 4px;
+    align-items: center;
 }
 
 .view-tab {
@@ -663,6 +666,7 @@ input[type="range"]::-webkit-slider-runnable-track {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
 /* New Set Input Structure Override */
 .set-row input {
     flex: initial;
@@ -713,7 +717,7 @@ input[type="range"]::-webkit-slider-runnable-track {
 .pill-rating {
     color: var(--accent-color);
     font-size: 0.8rem;
-    background: rgba(0,0,0,0.2);
+    background: rgba(0, 0, 0, 0.2);
     padding: 1px 6px;
     border-radius: 999px;
     margin-left: 4px;
@@ -725,3 +729,85 @@ input[type="range"]::-webkit-slider-runnable-track {
     margin-top: 4px;
 }
 
+/* バックアップボタンのスタイル調整 */
+.backup-controls .view-tab {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+}
+
+.backup-controls .view-tab:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--accent-color);
+}
+
+@media (max-width: 480px) {
+    .section-header-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .backup-controls {
+        margin-left: 0 !important;
+    }
+}
+
+/* Image Modal */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: rgba(0, 0, 0, 0.9);
+    justify-content: center;
+    align-items: center;
+}
+
+.modal.active {
+    display: flex;
+}
+
+.modal-content {
+    max-width: 95%;
+    max-height: 95%;
+    object-fit: contain;
+    border-radius: var(--radius-md);
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    animation: zoom 0.3s;
+}
+
+@keyframes zoom {
+    from {
+        transform: scale(0.1);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.close-modal {
+    position: absolute;
+    top: 20px;
+    right: 30px;
+    color: #f1f1f1;
+    font-size: 40px;
+    font-weight: bold;
+    transition: 0.3s;
+    cursor: pointer;
+    z-index: 1001;
+    line-height: 1;
+}
+
+.close-modal:hover,
+.close-modal:focus {
+    color: var(--accent-color);
+    text-decoration: none;
+    cursor: pointer;
+}
