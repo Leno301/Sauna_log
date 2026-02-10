@@ -77,15 +77,11 @@
 
                     <div class="form-group">
                         <label>写真</label>
-                        <div class="image-upload-area" id="dropZone">
-                            <i data-lucide="image-plus" class="upload-icon"></i>
-                            <p>クリックまたはドラッグ＆ドロップで写真を追加</p>
-                            <input type="file" id="imageInput" accept="image/*" hidden>
-                            <div id="previewArea" class="preview-area hidden">
-                                <img id="imagePreview" src="" alt="Preview">
-                                <button type="button" id="removeImageBtn" class="remove-btn"><i
-                                        data-lucide="x"></i></button>
-                            </div>
+                        <div id="dropZone" class="image-upload-area">
+                            <i data-lucide="camera" class="upload-icon"></i>
+                            <p>写真を追加</p>
+                            <input type="file" id="imageInput" accept="image/*" multiple style="display: none;">
+                            <div id="previewArea" class="preview-grid hidden"></div>
                         </div>
                     </div>
 
@@ -105,9 +101,12 @@
                         <button id="calendarViewBtn" class="view-tab">
                             <i data-lucide="calendar" class="icon-xs"></i> カレンダー
                         </button>
+                        <button id="statsViewBtn" class="view-tab">
+                            <i data-lucide="bar-chart-2" class="icon-xs"></i> 統計
+                        </button>
                     </div>
 
-                    <div class="backup-controls" style="margin-left: 10px; display: flex; gap: 8px;">
+                    <div class="backup-controls" style="display: flex; gap: 8px;">
                         <button id="exportBtn" class="view-tab" title="保存">
                             <i data-lucide="download" class="icon-xs"></i> 保存
                         </button>
@@ -125,9 +124,13 @@
                         </div>
                     </div>
                 </div>
-
                 <div id="calendarView" class="view-content hidden">
                     <div id="calendar"></div>
+                </div>
+                <div id="statsView" class="view-content hidden">
+                    <div id="statsContainer" class="stats-container">
+                        <!-- Stats will be rendered here -->
+                    </div>
                 </div>
             </section>
         </main>

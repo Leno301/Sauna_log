@@ -8,8 +8,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const imageInput = document.getElementById('imageInput');
     const dropZone = document.getElementById('dropZone');
     const previewArea = document.getElementById('previewArea');
-    const imagePreview = document.getElementById('imagePreview');
-    const removeImageBtn = document.getElementById('removeImageBtn');
     const saunaList = document.getElementById('saunaList');
     const visitDateInput = document.getElementById('visitDate');
     const setsContainer = document.getElementById('setsContainer');
@@ -23,54 +21,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Tab Elements
     const listViewBtn = document.getElementById('listViewBtn');
     const calendarViewBtn = document.getElementById('calendarViewBtn');
+    const statsViewBtn = document.getElementById('statsViewBtn');
     const listView = document.getElementById('listView');
     const calendarView = document.getElementById('calendarView');
+    const statsView = document.getElementById('statsView');
+    const statsContainer = document.getElementById('statsContainer');
     let calendar = null; // FullCalendar instance
 
     // Modal Elements
     const imageModal = document.getElementById('imageModal');
     const fullImage = document.getElementById('fullImage');
     const closeModal = document.querySelector('.close-modal');
-
-    if (imageModal && closeModal) {
-        closeModal.addEventListener('click', () => {
-            imageModal.classList.remove('active');
-            imageModal.classList.add('hidden');
-        });
-
-        imageModal.addEventListener('click', (e) => {
-            if (e.target === imageModal) {
-                imageModal.classList.remove('active');
-                imageModal.classList.add('hidden');
-            }
-        });
-
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && imageModal.classList.contains('active')) {
-                imageModal.classList.remove('active');
-                imageModal.classList.add('hidden');
-            }
-        });
-    }
-
-    // Expose openImageModal to window for onclick attribute
-    window.openImageModal = function (src) {
-        if (imageModal && fullImage) {
-            fullImage.src = src;
-            imageModal.classList.remove('hidden');
-            imageModal.classList.add('active');
-        }
-    };
-
-    // Default Date
-    visitDateInput.valueAsDate = new Date();
-
-    // Rating Sliders (Overall only now)
-    // ratingInput listener removed as it is now calculated
-
-    overallRatingInput.addEventListener('input', (e) => {
-        overallRatingValue.textContent = e.target.value;
-    });
 
     // Dynamic Sets Handling
     let setCounter = 0;
@@ -127,12 +88,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Image Upload Handling
-    let currentImageBase64 = null;
+    let currentImages = [];
 
     dropZone.addEventListener('click', (e) => {
-        if (e.target !== removeImageBtn && e.target.closest('.remove-btn') !== removeImageBtn) {
-            imageInput.click();
-        }
+        imageInput.click();
     });
 
     dropZone.addEventListener('dragover', (e) => {
@@ -148,44 +107,68 @@ document.addEventListener('DOMContentLoaded', () => {
     dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         dropZone.style.borderColor = 'var(--border-color)';
-        const file = e.dataTransfer.files[0];
-        handleImage(file);
+        const files = e.dataTransfer.files;
+        handleImages(files);
     });
 
     imageInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        handleImage(file);
+        const files = e.target.files;
+        handleImages(files);
     });
 
-    removeImageBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        clearImage();
-    });
+    function handleImages(files) {
+        if (!files || files.length === 0) return;
 
-    function handleImage(file) {
-        if (!file || !file.type.startsWith('image/')) return;
+        Array.from(files).forEach(file => {
+            if (!file.type.startsWith('image/')) return;
 
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            currentImageBase64 = e.target.result;
-            imagePreview.src = currentImageBase64;
-            previewArea.classList.remove('hidden');
-        };
-        reader.readAsDataURL(file);
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                currentImages.push(e.target.result);
+                updatePreview();
+            };
+            reader.readAsDataURL(file);
+        });
     }
 
+    function updatePreview() {
+        previewArea.innerHTML = '';
+        if (currentImages.length === 0) {
+            previewArea.classList.add('hidden');
+            return;
+        }
+
+        previewArea.classList.remove('hidden');
+        currentImages.forEach((imgSrc, index) => {
+            const div = document.createElement('div');
+            div.className = 'preview-item';
+            div.innerHTML = `
+                <img src="${imgSrc}" alt="Preview ${index + 1}">
+                <button type="button" class="preview-remove-btn" onclick="removeImage(${index})">
+                    <i data-lucide="x"></i>
+                </button>
+            `;
+            previewArea.appendChild(div);
+        });
+
+        if (window.lucide) lucide.createIcons();
+    }
+
+    window.removeImage = function (index) {
+        currentImages.splice(index, 1);
+        updatePreview();
+    };
+
     function clearImage() {
-        currentImageBase64 = null;
-        imagePreview.src = '';
+        currentImages = [];
+        updatePreview();
         imageInput.value = '';
-        previewArea.classList.add('hidden');
     }
 
     // Form Submission
     form.addEventListener('submit', (e) => {
         e.preventDefault();
 
-        // Collect set times
         // Collect set times and ratings
         const setsData = [];
         let totalRating = 0;
@@ -223,7 +206,7 @@ document.addEventListener('DOMContentLoaded', () => {
             overallRating: document.getElementById('overallRating').value,
             sets: setsData, // Array of objects {time, rating}
             memo: document.getElementById('memo').value,
-            image: currentImageBase64,
+            images: currentImages,
             createdAt: editId ? (getRecords().find(r => r.id === editId)?.createdAt || new Date().toISOString()) : new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
@@ -233,7 +216,6 @@ document.addEventListener('DOMContentLoaded', () => {
             delete form.dataset.editId;
             const submitBtn = form.querySelector('.submit-btn');
             submitBtn.innerHTML = '<i data-lucide="save"></i> 記録する';
-            // Cancel edit button removal if implemented
         } else {
             saveRecord(recordData);
         }
@@ -372,7 +354,18 @@ document.addEventListener('DOMContentLoaded', () => {
         div.className = 'log-card';
 
         let imageHtml = '';
-        if (record.image) {
+        if (record.images && record.images.length > 0) {
+            imageHtml = `
+                <div class="log-image-grid">
+                    ${record.images.map(img => `
+                        <div class="log-image-item" onclick="openImageModal('${img}')">
+                            <img src="${img}" alt="サウナ写真" loading="lazy">
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        } else if (record.image) {
+            // Backward compatibility
             imageHtml = `
                 <div class="log-image" onclick="openImageModal('${record.image}')" style="cursor: pointer;">
                     <img src="${record.image}" alt="サウナ写真" loading="lazy">
@@ -483,19 +476,29 @@ document.addEventListener('DOMContentLoaded', () => {
         switchView('calendar');
     });
 
+    statsViewBtn.addEventListener('click', () => {
+        switchView('stats');
+    });
+
     function switchView(viewName) {
+        // Reset all active classes
+        listViewBtn.classList.remove('active');
+        calendarViewBtn.classList.remove('active');
+        statsViewBtn.classList.remove('active');
+
+        listView.classList.add('hidden');
+        listView.classList.remove('active');
+        calendarView.classList.add('hidden');
+        calendarView.classList.remove('active');
+        statsView.classList.add('hidden');
+        statsView.classList.remove('active');
+
         if (viewName === 'list') {
             listViewBtn.classList.add('active');
-            calendarViewBtn.classList.remove('active');
             listView.classList.remove('hidden');
             listView.classList.add('active');
-            calendarView.classList.add('hidden');
-            calendarView.classList.remove('active');
-        } else {
-            listViewBtn.classList.remove('active');
+        } else if (viewName === 'calendar') {
             calendarViewBtn.classList.add('active');
-            listView.classList.add('hidden');
-            listView.classList.remove('active');
             calendarView.classList.remove('hidden');
             calendarView.classList.add('active');
 
@@ -506,6 +509,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 calendar.render();
                 updateCalendarEvents(); // Refresh data
             }
+        } else if (viewName === 'stats') {
+            statsViewBtn.classList.add('active');
+            statsView.classList.remove('hidden');
+            statsView.classList.add('active');
+            renderStats();
         }
     }
 
@@ -522,13 +530,7 @@ document.addEventListener('DOMContentLoaded', () => {
             height: 'auto',
             events: getCalendarEvents(),
             eventClick: function (info) {
-                // When an event is clicked, switch to list view and maybe filter?
-                // For now, let's just alert the details or switch back to list view
-                // Ideally we scroll to the item, but simple switch is a good start.
                 switchView('list');
-                // Optional: Scroll to specific item if we implemented ID on cards
-                // const card = document.getElementById(`record-${info.event.id}`);
-                // if(card) card.scrollIntoView();
             },
             eventContent: function (arg) {
                 return {
@@ -541,8 +543,70 @@ document.addEventListener('DOMContentLoaded', () => {
         calendar.render();
     }
 
+    // Statistics Logic
+    function renderStats() {
+        const records = getRecords();
+        statsContainer.innerHTML = '';
+
+        if (records.length === 0) {
+            statsContainer.innerHTML = `
+                <div class="empty-state">
+                    <p>まだ記録がありません。<br>今日のととのいを記録しましょう！</p>
+                </div>`;
+            return;
+        }
+
+        // Aggregate by facility name
+        const stats = {};
+        records.forEach(record => {
+            const name = record.facilityName;
+            if (!stats[name]) {
+                stats[name] = {
+                    count: 0,
+                    lastVisit: null
+                };
+            }
+            stats[name].count++;
+
+            // Assuming records are sorted by date desc or taking the latest
+            const visitDate = new Date(record.visitDate);
+            if (!stats[name].lastVisit || visitDate > new Date(stats[name].lastVisit)) {
+                stats[name].lastVisit = record.visitDate;
+            }
+        });
+
+        // Convert to array and sort by count desc
+        const sortedStats = Object.entries(stats)
+            .map(([name, data]) => ({ name, ...data }))
+            .sort((a, b) => b.count - a.count);
+
+        // Render
+        sortedStats.forEach((item, index) => {
+            const rank = index + 1;
+            let rankClass = 'rank-other';
+            if (rank === 1) rankClass = 'rank-1';
+            if (rank === 2) rankClass = 'rank-2';
+            if (rank === 3) rankClass = 'rank-3';
+
+            const div = document.createElement('div');
+            div.className = 'stat-item';
+            div.innerHTML = `
+                <div class="rank-badge ${rankClass}">${rank}</div>
+                <div class="stat-info">
+                    <div class="stat-name">${escapeHtml(item.name)}</div>
+                    <div class="stat-details">
+                        <span>最終訪問: ${formatDate(item.lastVisit)}</span>
+                    </div>
+                </div>
+                <div class="stat-count-badge">${item.count}回</div>
+            `;
+            statsContainer.appendChild(div);
+        });
+    }
+
     // Expose editRecord to window
     window.editRecord = function (id) {
+        // ... (existing editRecord implementation) ...
         const records = getRecords();
         const record = records.find(r => r.id === id);
         if (!record) return;
@@ -554,11 +618,14 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('overallRatingValue').textContent = record.overallRating || 5;
         document.getElementById('memo').value = record.memo || '';
 
-        // Handle Image
-        if (record.image) {
-            currentImageBase64 = record.image;
-            imagePreview.src = record.image;
-            previewArea.classList.remove('hidden');
+        // Handle Images
+        if (record.images && record.images.length > 0) {
+            currentImages = [...record.images];
+            updatePreview();
+        } else if (record.image) {
+            // Backward compatibility
+            currentImages = [record.image];
+            updatePreview();
         } else {
             clearImage();
         }
@@ -599,6 +666,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     function getCalendarEvents() {
+        // ... (existing implementation)
         const records = getRecords();
         return records.map(record => {
             // Determine color based on rating
