@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const calendarView = document.getElementById('calendarView');
     const statsView = document.getElementById('statsView');
     const statsContainer = document.getElementById('statsContainer');
+    const searchInput = document.getElementById('searchInput'); // Search Input
     let calendar = null; // FullCalendar instance
 
     // Modal Elements
@@ -326,20 +327,39 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.readAsText(file);
     });
 
+    // Search Input Logic
+    searchInput.addEventListener('input', () => {
+        loadRecords();
+    });
+
     // UI Rendering
     function loadRecords() {
         const records = getRecords();
+        const filterText = searchInput.value.trim().toLowerCase();
+
         saunaList.innerHTML = '';
 
-        if (records.length === 0) {
-            saunaList.innerHTML = `
+        let displayRecords = records;
+        if (filterText) {
+            displayRecords = records.filter(r => r.facilityName.toLowerCase().includes(filterText));
+        }
+
+        if (displayRecords.length === 0) {
+            if (filterText) {
+                saunaList.innerHTML = `
+                <div class="empty-state">
+                    <p>「${escapeHtml(filterText)}」に一致する記録は見つかりませんでした。</p>
+                </div>`;
+            } else {
+                saunaList.innerHTML = `
                 <div class="empty-state">
                     <p>まだ記録がありません。<br>今日のととのいを記録しましょう！</p>
                 </div>`;
+            }
             return;
         }
 
-        records.forEach(record => {
+        displayRecords.forEach(record => {
             const card = createRecordCard(record);
             saunaList.appendChild(card);
         });
@@ -409,7 +429,16 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="log-header">
                 <div class="log-title-row">
                     <div class="log-title">
-                        <h3>${escapeHtml(record.facilityName)}</h3>
+                        <h3>
+                            ${escapeHtml(record.facilityName)}
+                            <a href="https://sauna-ikitai.com/search?keyword=${encodeURIComponent(record.facilityName)}" 
+                               target="_blank" 
+                               class="external-link" 
+                               title="サウナイキタイで見る"
+                               onclick="event.stopPropagation()">
+                                <i data-lucide="external-link" class="icon-xs"></i>
+                            </a>
+                        </h3>
                         <div class="log-date">${formatDate(record.visitDate)}</div>
                     </div>
                 </div>
@@ -600,6 +629,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div class="stat-count-badge">${item.count}回</div>
             `;
+            div.innerHTML = `
+                <div class="rank-badge ${rankClass}">${rank}</div>
+                <div class="stat-info">
+                    <div class="stat-name">${escapeHtml(item.name)}</div>
+                    <div class="stat-details">
+                        <span>最終訪問: ${formatDate(item.lastVisit)}</span>
+                    </div>
+                </div>
+                <div class="stat-count-badge">${item.count}回</div>
+            `;
+            // Add click filtering
+            div.style.cursor = 'pointer';
+            div.onclick = () => {
+                searchInput.value = item.name;
+                switchView('list');
+                loadRecords();
+            };
             statsContainer.appendChild(div);
         });
     }
