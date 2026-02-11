@@ -88,6 +88,11 @@ document.addEventListener('DOMContentLoaded', () => {
         addSetRow();
     });
 
+    // Overall Rating Slider Logic
+    overallRatingInput.addEventListener('input', () => {
+        overallRatingValue.textContent = overallRatingInput.value;
+    });
+
     // Image Upload Handling
     let currentImages = [];
 
