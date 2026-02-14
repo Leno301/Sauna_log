@@ -12,6 +12,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const visitDateInput = document.getElementById('visitDate');
     const setsContainer = document.getElementById('setsContainer');
     const addSetBtn = document.getElementById('addSetBtn');
+    // Outdoor Temp
+    const outdoorTempInput = document.getElementById('outdoorTemp');
 
     // Backup Elements
     const exportBtn = document.getElementById('exportBtn');
@@ -139,16 +141,229 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleImages(files) {
         if (!files || files.length === 0) return;
 
-        Array.from(files).forEach(file => {
+        Array.from(files).forEach((file, index) => {
             if (!file.type.startsWith('image/')) return;
 
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                currentImages.push(e.target.result);
+            // EXIF extraction for the first image (before compression to preserve metadata if needed, 
+            // though we extract from the original file object so it's fine)
+            if (index === 0) {
+                EXIF.getData(file, function () {
+                    const dateOriginal = EXIF.getTag(this, "DateTimeOriginal");
+                    const lat = EXIF.getTag(this, "GPSLatitude");
+                    const lon = EXIF.getTag(this, "GPSLongitude");
+                    const latRef = EXIF.getTag(this, "GPSLatitudeRef");
+                    const lonRef = EXIF.getTag(this, "GPSLongitudeRef");
+
+                    if (dateOriginal) {
+                        // Format: "YYYY:MM:DD HH:MM:SS" -> "YYYY-MM-DD"
+                        const [datePart, timePart] = dateOriginal.split(' ');
+                        const [y, m, d] = datePart.split(':');
+                        const formattedDate = `${y}-${m}-${d}`;
+                        visitDateInput.value = formattedDate;
+
+                        if (lat && lon && latRef && lonRef) {
+                            const decimalLat = convertDMSToDD(lat, latRef);
+                            const decimalLon = convertDMSToDD(lon, lonRef);
+                            fetchWeather(decimalLat, decimalLon, dateOriginal);
+                            fetchFacilityName(decimalLat, decimalLon);
+                        } else {
+                            console.log("No GPS data found");
+                        }
+                    }
+                });
+            }
+
+            // Compress and process image
+            compressImage(file, (compressedDataUrl) => {
+                currentImages.push(compressedDataUrl);
                 updatePreview();
-            };
-            reader.readAsDataURL(file);
+            });
         });
+    }
+
+    async function fetchFacilityName(lat, lon) {
+        // Nominatim Reverse Geocoding API
+        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
+        const facilityInput = document.getElementById('facilityName');
+
+        try {
+            // Only fetch if input is empty
+            if (facilityInput.value.trim() !== "") {
+                return;
+            }
+
+            facilityInput.placeholder = "施設名を取得中...";
+
+            const response = await fetch(url, {
+                headers: {
+                    'User-Agent': 'SaunaLogApp/1.0' // Required by Nominatim policy
+                }
+            });
+            const data = await response.json();
+
+            if (data && data.address) {
+                // Priority of names to use
+                const nameCandidates = [
+                    data.address.leisure,
+                    data.address.amenity,
+                    data.address.building,
+                    data.address.shop,
+                    data.address.tourism,
+                    data.address.office,
+                    data.address.name // Generic name if available (often not in address object directly but checked here conceptually)
+                ];
+
+                // If 'name' property exists on root object and matches one of the address fields or is better
+                if (data.name) {
+                    // Sometimes data.name is the best option
+                    nameCandidates.unshift(data.name);
+                }
+
+                let detectedName = nameCandidates.find(n => n); // Find first truthy value
+
+                // Fallback to address parts if no specific name found
+                if (!detectedName) {
+                    detectedName = [
+                        data.address.road,
+                        data.address.neighbourhood,
+                        data.address.suburb,
+                        data.address.city,
+                        data.address.town,
+                        data.address.village
+                    ].find(n => n);
+                }
+
+                if (detectedName) {
+                    facilityInput.value = detectedName;
+                } else {
+                    facilityInput.placeholder = "施設名 (自動取得不可)";
+                }
+            } else {
+                facilityInput.placeholder = "施設名 (取得失敗)";
+            }
+
+        } catch (e) {
+            console.error("Facility name fetch failed", e);
+            facilityInput.placeholder = "施設名";
+        }
+    }
+
+
+
+    function compressImage(file, callback) {
+        const maxWidth = 1024;
+        const maxHeight = 1024;
+        const reader = new FileReader();
+
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > maxWidth) {
+                        height = Math.round(height * (maxWidth / width));
+                        width = maxWidth;
+                    }
+                } else {
+                    if (height > maxHeight) {
+                        width = Math.round(width * (maxHeight / height));
+                        height = maxHeight;
+                    }
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Compress to JPEG with 0.7 quality
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                callback(dataUrl);
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function convertDMSToDD(dms, ref) {
+        let dd = dms[0] + dms[1] / 60 + dms[2] / (60 * 60);
+        if (ref === "S" || ref === "W") {
+            dd = dd * -1;
+        }
+        return dd;
+    }
+
+    async function fetchWeather(lat, lon, dateOriginal) {
+        // dateOriginal format: "YYYY:MM:DD HH:MM:SS"
+        const [dateStr, timeStr] = dateOriginal.split(' ');
+        const dateFormatted = dateStr.replace(/:/g, '-'); // YYYY-MM-DD
+        const visitDateTime = new Date(`${dateFormatted}T${timeStr}`);
+
+        // Open-Meteo Forecast API (works for recent past)
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,relative_humidity_2m&start_date=${dateFormatted}&end_date=${dateFormatted}&timezone=Asia%2FTokyo`;
+
+        try {
+            outdoorTempInput.placeholder = "取得中...";
+            document.getElementById('outdoorHumidity').placeholder = "取得中...";
+
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (!data.hourly || !data.hourly.time || !data.hourly.temperature_2m || !data.hourly.relative_humidity_2m) {
+                throw new Error("Invalid API response");
+            }
+
+            const times = data.hourly.time; // array of "YYYY-MM-DDThh:mm"
+            const temps = data.hourly.temperature_2m;
+            const humidities = data.hourly.relative_humidity_2m;
+
+            // Filter times: [visitDateTime - 3h, visitDateTime]
+            const tempCandidates = [];
+            const humidCandidates = [];
+            const threeHoursBefore = new Date(visitDateTime.getTime() - 3 * 60 * 60 * 1000);
+
+            times.forEach((tStr, i) => {
+                const tDate = new Date(tStr);
+                if (tDate >= threeHoursBefore && tDate <= visitDateTime) {
+                    tempCandidates.push(temps[i]);
+                    humidCandidates.push(humidities[i]);
+                }
+            });
+
+            if (tempCandidates.length > 0) {
+                const maxTemp = Math.max(...tempCandidates);
+                const minTemp = Math.min(...tempCandidates);
+                if (maxTemp === minTemp) {
+                    outdoorTempInput.value = `${maxTemp}`;
+                } else {
+                    outdoorTempInput.value = `${minTemp}-${maxTemp}`;
+                }
+            } else {
+                outdoorTempInput.placeholder = "データなし";
+            }
+
+            if (humidCandidates.length > 0) {
+                const maxHumid = Math.max(...humidCandidates);
+                const minHumid = Math.min(...humidCandidates);
+                if (maxHumid === minHumid) {
+                    document.getElementById('outdoorHumidity').value = `${maxHumid}`;
+                } else {
+                    document.getElementById('outdoorHumidity').value = `${minHumid}-${maxHumid}`;
+                }
+            } else {
+                document.getElementById('outdoorHumidity').placeholder = "データなし";
+            }
+
+        } catch (e) {
+            console.error("Weather fetch failed", e);
+            outdoorTempInput.placeholder = "取得失敗";
+            document.getElementById('outdoorHumidity').placeholder = "取得失敗";
+        }
+
+
     }
 
     function updatePreview() {
@@ -188,85 +403,93 @@ document.addEventListener('DOMContentLoaded', () => {
     // Form Submission
     form.addEventListener('submit', (e) => {
         e.preventDefault();
+        try {
+            // Collect set times and ratings
+            const setsData = [];
+            let totalRating = 0;
+            let setWithRatingCount = 0;
 
-        // Collect set times and ratings
-        const setsData = [];
-        let totalRating = 0;
-        let setWithRatingCount = 0;
+            const timeInputs = setsContainer.querySelectorAll('input[name="saunaTime[]"]');
+            const ratingInputs = setsContainer.querySelectorAll('input[name="saunaRating[]"]');
+            const aufgussInputs = setsContainer.querySelectorAll('input[name="aufguss[]"]');
+            const masterInputs = setsContainer.querySelectorAll('input[name="heatWaveMaster[]"]');
 
-        const timeInputs = setsContainer.querySelectorAll('input[name="saunaTime[]"]');
-        const ratingInputs = setsContainer.querySelectorAll('input[name="saunaRating[]"]');
-        const aufgussInputs = setsContainer.querySelectorAll('input[name="aufguss[]"]');
-        const masterInputs = setsContainer.querySelectorAll('input[name="heatWaveMaster[]"]');
+            timeInputs.forEach((input, index) => {
+                const ratingVal = ratingInputs[index] ? parseInt(ratingInputs[index].value) : 0;
+                const timeVal = input.value;
+                const isAufguss = aufgussInputs[index] ? aufgussInputs[index].checked : false;
+                const masterName = masterInputs[index] ? masterInputs[index].value.trim() : '';
 
-        timeInputs.forEach((input, index) => {
-            const ratingVal = ratingInputs[index] ? parseInt(ratingInputs[index].value) : 0;
-            const timeVal = input.value;
-            const isAufguss = aufgussInputs[index] ? aufgussInputs[index].checked : false;
-            const masterName = masterInputs[index] ? masterInputs[index].value.trim() : '';
+                // Require at least a rating or time or aufguss info to save the set
+                if (ratingVal > 0 || timeVal || isAufguss || masterName) {
+                    setsData.push({
+                        time: timeVal,
+                        rating: ratingVal,
+                        aufguss: isAufguss,
+                        heatWaveMaster: masterName
+                    });
 
-            // Require at least a rating or time or aufguss info to save the set
-            if (ratingVal > 0 || timeVal || isAufguss || masterName) {
-                setsData.push({
-                    time: timeVal,
-                    rating: ratingVal,
-                    aufguss: isAufguss,
-                    heatWaveMaster: masterName
-                });
-
-                if (ratingVal > 0) {
-                    totalRating += ratingVal;
-                    setWithRatingCount++;
+                    if (ratingVal > 0) {
+                        totalRating += ratingVal;
+                        setWithRatingCount++;
+                    }
                 }
+            });
+
+            // Calculate Average
+            const avgRating = setWithRatingCount > 0 ? (totalRating / setWithRatingCount).toFixed(1) : 0;
+
+            // Check if editing
+            const editId = form.dataset.editId;
+
+            const recordData = {
+                id: editId || Date.now().toString(),
+                facilityName: document.getElementById('facilityName').value,
+                visitDate: document.getElementById('visitDate').value,
+                outdoorTemp: document.getElementById('outdoorTemp').value, // Added Outdoor Temp
+                outdoorHumidity: document.getElementById('outdoorHumidity').value, // Added Outdoor Humidity
+                rating: avgRating, // Calculated average
+                overallRating: document.getElementById('overallRating').value,
+                sets: setsData, // Array of objects {time, rating}
+                memo: document.getElementById('memo').value,
+                images: currentImages,
+                createdAt: editId ? (getRecords().find(r => r.id === editId)?.createdAt || new Date().toISOString()) : new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+
+            if (editId) {
+                updateRecord(recordData);
+                delete form.dataset.editId;
+                const submitBtn = form.querySelector('.submit-btn');
+                submitBtn.innerHTML = '<i data-lucide="save"></i> 記録する';
+            } else {
+                saveRecord(recordData);
             }
-        });
+            form.reset();
+            clearImage();
 
-        // Calculate Average
-        const avgRating = setWithRatingCount > 0 ? (totalRating / setWithRatingCount).toFixed(1) : 0;
+            // Reset defaults
+            visitDateInput.valueAsDate = new Date();
+            document.getElementById('outdoorTemp').value = "";
+            document.getElementById('outdoorHumidity').value = ""; // Reset Outdoor Humidity
+            ratingValue.textContent = "-";
+            overallRatingValue.textContent = "5";
+            document.getElementById('rating').value = "";
+            document.getElementById('overallRating').value = 5;
 
-        // Check if editing
-        const editId = form.dataset.editId;
+            // Reset Sets to 3
+            setsContainer.innerHTML = '';
+            setCounter = 0;
+            addSetRow();
+            addSetRow();
+            addSetRow();
 
-        const recordData = {
-            id: editId || Date.now().toString(),
-            facilityName: document.getElementById('facilityName').value,
-            visitDate: document.getElementById('visitDate').value,
-            rating: avgRating, // Calculated average
-            overallRating: document.getElementById('overallRating').value,
-            sets: setsData, // Array of objects {time, rating}
-            memo: document.getElementById('memo').value,
-            images: currentImages,
-            createdAt: editId ? (getRecords().find(r => r.id === editId)?.createdAt || new Date().toISOString()) : new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-        };
-
-        if (editId) {
-            updateRecord(recordData);
-            delete form.dataset.editId;
-            const submitBtn = form.querySelector('.submit-btn');
-            submitBtn.innerHTML = '<i data-lucide="save"></i> 記録する';
-        } else {
-            saveRecord(recordData);
+            loadRecords();
+            saunaList.scrollIntoView({ behavior: 'smooth' });
+        } catch (err) {
+            console.error('Submit Error:', err);
+            alert('保存中にエラーが発生しました: ' + err.message);
         }
-        form.reset();
-        clearImage();
-
-        // Reset defaults
-        visitDateInput.valueAsDate = new Date();
-        ratingValue.textContent = "-";
-        overallRatingValue.textContent = "5";
-        document.getElementById('rating').value = "";
-        document.getElementById('overallRating').value = 5;
-
-        // Reset Sets to 3
-        setsContainer.innerHTML = '';
-        setCounter = 0;
-        addSetRow();
-        addSetRow();
-        addSetRow();
-
-        loadRecords();
-        saunaList.scrollIntoView({ behavior: 'smooth' });
     });
 
     // Data Management
@@ -478,7 +701,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <i data-lucide="external-link" class="icon-xs"></i>
                             </a>
                         </h3>
-                        <div class="log-date">${formatDate(record.visitDate)}</div>
+                        <div class="log-date">
+                            ${formatDate(record.visitDate)} 
+                            ${record.outdoorTemp ? `<span class="temp-badge"><i data-lucide="thermometer" class="icon-xs"></i> 外気: ${escapeHtml(record.outdoorTemp)}℃</span>` : ''}
+                            ${record.outdoorHumidity ? `<span class="temp-badge"><i data-lucide="droplets" class="icon-xs"></i> 湿度: ${escapeHtml(record.outdoorHumidity)}%</span>` : ''}
+                        </div>
                     </div>
                 </div>
                 
@@ -722,6 +949,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Populate Form
         document.getElementById('facilityName').value = record.facilityName;
         document.getElementById('visitDate').value = record.visitDate;
+        document.getElementById('outdoorTemp').value = record.outdoorTemp || ''; // Populate Outdoor Temp
+        document.getElementById('outdoorHumidity').value = record.outdoorHumidity || ''; // Populate Outdoor Humidity
         document.getElementById('overallRating').value = record.overallRating || 5;
         document.getElementById('overallRatingValue').textContent = record.overallRating || 5;
         document.getElementById('memo').value = record.memo || '';

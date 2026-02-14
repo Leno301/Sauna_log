@@ -15,6 +15,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <!-- FullCalendar -->
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+    <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
 </head>
 
 <body>
@@ -41,6 +42,18 @@
                         <div class="form-group">
                             <label for="visitDate">日付</label>
                             <input type="date" id="visitDate" required>
+                        </div>
+                        <div class="form-row">
+                            <div class="input-wrapper">
+                                <label for="outdoorTemp"><i data-lucide="thermometer" class="icon-xs"></i> 外気温
+                                    (℃)</label>
+                                <input type="text" id="outdoorTemp" placeholder="自動取得または入力">
+                            </div>
+                            <div class="input-wrapper">
+                                <label for="outdoorHumidity"><i data-lucide="droplets" class="icon-xs"></i> 湿度
+                                    (%)</label>
+                                <input type="text" id="outdoorHumidity" placeholder="自動取得または入力">
+                            </div>
                         </div>
                         <div class="rating-group">
                             <label>ととのい度 (平均) <span id="ratingValue" class="rating-display">-</span>/10</label>
