@@ -37,24 +37,38 @@ document.addEventListener('DOMContentLoaded', () => {
     // Dynamic Sets Handling
     let setCounter = 0;
 
-    function addSetRow(defaultTime = '') {
+    function addSetRow(defaultTime = '', defaultRating = '', defaultAufguss = false, defaultMaster = '') {
         setCounter++;
         const row = document.createElement('div');
         row.className = 'set-row';
         row.dataset.setId = setCounter;
 
         row.innerHTML = `
-            <span class="set-number">${setCounter}セット目</span>
-            <div class="set-inputs">
-                <input type="number" name="saunaTime[]" placeholder="分" min="0" value="${defaultTime}" required class="set-time-input">
-                <div class="set-rating-input">
-                    <label>ととのい:</label>
-                    <input type="number" name="saunaRating[]" placeholder="1-10" min="1" max="10" required class="set-rating-val">
+            <div class="set-row-top">
+                <span class="set-number">${setCounter}セット目</span>
+                <button type="button" class="remove-set-btn" aria-label="削除">
+                    <i data-lucide="trash-2" class="icon-xs"></i>
+                </button>
+            </div>
+            <div class="set-row-main">
+                <div class="set-inputs-row">
+                    <div class="input-wrapper time-wrapper">
+                        <label>時間(分)</label>
+                        <input type="number" name="saunaTime[]" placeholder="-" min="0" value="${defaultTime}" class="set-time-input">
+                    </div>
+                    <div class="input-wrapper rating-wrapper">
+                        <label>ととのい</label>
+                        <input type="number" name="saunaRating[]" placeholder="1-10" min="1" max="10" value="${defaultRating}" required class="set-rating-val">
+                    </div>
+                </div>
+                <div class="set-extras-row">
+                    <label class="aufguss-label">
+                        <input type="checkbox" name="aufguss[]" class="aufguss-check" ${defaultAufguss ? 'checked' : ''}>
+                        <i data-lucide="wind" class="icon-xs"></i> アウフグース
+                    </label>
+                    <input type="text" name="heatWaveMaster[]" placeholder="熱波師名 (任意)" value="${defaultMaster}" class="master-name-input">
                 </div>
             </div>
-            <button type="button" class="remove-set-btn" aria-label="削除">
-                <i data-lucide="trash-2" class="icon-xs"></i>
-            </button>
         `;
 
         setsContainer.appendChild(row);
@@ -182,13 +196,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const timeInputs = setsContainer.querySelectorAll('input[name="saunaTime[]"]');
         const ratingInputs = setsContainer.querySelectorAll('input[name="saunaRating[]"]');
+        const aufgussInputs = setsContainer.querySelectorAll('input[name="aufguss[]"]');
+        const masterInputs = setsContainer.querySelectorAll('input[name="heatWaveMaster[]"]');
 
         timeInputs.forEach((input, index) => {
-            if (input.value) {
-                const ratingVal = ratingInputs[index] ? parseInt(ratingInputs[index].value) : 0;
+            const ratingVal = ratingInputs[index] ? parseInt(ratingInputs[index].value) : 0;
+            const timeVal = input.value;
+            const isAufguss = aufgussInputs[index] ? aufgussInputs[index].checked : false;
+            const masterName = masterInputs[index] ? masterInputs[index].value.trim() : '';
+
+            // Require at least a rating or time or aufguss info to save the set
+            if (ratingVal > 0 || timeVal || isAufguss || masterName) {
                 setsData.push({
-                    time: input.value,
-                    rating: ratingVal
+                    time: timeVal,
+                    rating: ratingVal,
+                    aufguss: isAufguss,
+                    heatWaveMaster: masterName
                 });
 
                 if (ratingVal > 0) {
@@ -380,9 +403,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let imageHtml = '';
         if (record.images && record.images.length > 0) {
+            const count = record.images.length;
+            let gridClass = 'grid-1';
+            if (count === 2) gridClass = 'grid-2';
+            else if (count === 3) gridClass = 'grid-3';
+            else if (count >= 4) gridClass = 'grid-4';
+
             imageHtml = `
-                <div class="log-image-grid">
-                    ${record.images.map(img => `
+                <div class="log-image-grid ${gridClass}">
+                    ${record.images.map((img, index) => `
                         <div class="log-image-item" onclick="openImageModal('${img}')">
                             <img src="${img}" alt="サウナ写真" loading="lazy">
                         </div>
@@ -392,8 +421,10 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (record.image) {
             // Backward compatibility
             imageHtml = `
-                <div class="log-image" onclick="openImageModal('${record.image}')" style="cursor: pointer;">
-                    <img src="${record.image}" alt="サウナ写真" loading="lazy">
+                <div class="log-image-grid grid-1">
+                    <div class="log-image-item" onclick="openImageModal('${record.image}')">
+                        <img src="${record.image}" alt="サウナ写真" loading="lazy">
+                    </div>
                 </div>
             `;
         }
@@ -408,14 +439,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="log-sets-display">
                     <span class="sets-label"><i data-lucide="flame" class="icon-xs"></i> サウナ時間記録</span>
                     <div class="sets-pills">
-                    <div class="sets-pills">
                         ${record.sets.map((set, idx) => {
                 // Handle both old string format and new object format
                 const time = typeof set === 'object' ? set.time : set;
                 const rating = typeof set === 'object' && set.rating ? `<span class="pill-rating">★${set.rating}</span>` : '';
+                const aufguss = (typeof set === 'object' && set.aufguss) ? `<i data-lucide="wind" class="icon-inline" title="アウフグース"></i>` : '';
+                const master = (typeof set === 'object' && set.heatWaveMaster) ? `<span class="pill-master">(${set.heatWaveMaster})</span>` : '';
+                const timeDisplay = time ? `<strong>${time}分</strong>` : '';
+
                 return `
                             <div class="set-pill">
-                                <span>${idx + 1}.</span> <strong>${time}分</strong> ${rating}
+                                <span>${idx + 1}.</span> ${timeDisplay} ${aufguss} ${master} ${rating}
                             </div>
                         `}).join('')}
                     </div>
@@ -477,6 +511,29 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         return div;
+    }
+
+    // Modal Logic
+    window.openImageModal = function (src) {
+        fullImage.src = src;
+        imageModal.classList.remove('hidden');
+        imageModal.classList.add('active');
+    };
+
+    if (closeModal) {
+        closeModal.addEventListener('click', () => {
+            imageModal.classList.add('hidden');
+            imageModal.classList.remove('active');
+        });
+    }
+
+    if (imageModal) {
+        imageModal.addEventListener('click', (e) => {
+            if (e.target === imageModal) {
+                imageModal.classList.add('hidden');
+                imageModal.classList.remove('active');
+            }
+        });
     }
 
     // Helper functions
@@ -688,15 +745,11 @@ document.addEventListener('DOMContentLoaded', () => {
             record.sets.forEach(set => {
                 // Handle object vs string format
                 const time = typeof set === 'object' ? set.time : set;
-                const rating = typeof set === 'object' ? set.rating : ''; // ratings might not exist in old old format
-                addSetRow(time); // This creates the row
+                const rating = typeof set === 'object' ? set.rating : '';
+                const aufguss = typeof set === 'object' ? set.aufguss : false;
+                const master = typeof set === 'object' ? set.heatWaveMaster : '';
 
-                // Now fill the rating for the last created row
-                const rows = setsContainer.querySelectorAll('.set-row');
-                const lastRow = rows[rows.length - 1];
-                if (lastRow && rating) {
-                    lastRow.querySelector('.set-rating-val').value = rating;
-                }
+                addSetRow(time, rating, aufguss, master); // This creates the row
             });
             updateSetNumbers();
         } else {
