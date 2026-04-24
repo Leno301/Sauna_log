@@ -21,9 +21,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const importFile = document.getElementById('importFile');
 
     // Tab Elements
+    const recordViewBtn = document.getElementById('recordViewBtn');
     const listViewBtn = document.getElementById('listViewBtn');
     const calendarViewBtn = document.getElementById('calendarViewBtn');
     const statsViewBtn = document.getElementById('statsViewBtn');
+    const recordView = document.getElementById('recordView');
+    const historySection = document.getElementById('historySection');
     const listView = document.getElementById('listView');
     const calendarView = document.getElementById('calendarView');
     const statsView = document.getElementById('statsView');
@@ -485,6 +488,7 @@ document.addEventListener('DOMContentLoaded', () => {
             addSetRow();
 
             loadRecords();
+            switchView('list');
             saunaList.scrollIntoView({ behavior: 'smooth' });
         } catch (err) {
             console.error('Submit Error:', err);
@@ -786,6 +790,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Tab Switching Logic
+    recordViewBtn.addEventListener('click', () => {
+        switchView('record');
+    });
+
     listViewBtn.addEventListener('click', () => {
         switchView('list');
     });
@@ -800,10 +808,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function switchView(viewName) {
         // Reset all active classes
+        recordViewBtn.classList.remove('active');
         listViewBtn.classList.remove('active');
         calendarViewBtn.classList.remove('active');
         statsViewBtn.classList.remove('active');
 
+        recordView.classList.add('hidden');
+        recordView.classList.remove('active');
+        historySection.classList.add('hidden');
         listView.classList.add('hidden');
         listView.classList.remove('active');
         calendarView.classList.add('hidden');
@@ -811,27 +823,34 @@ document.addEventListener('DOMContentLoaded', () => {
         statsView.classList.add('hidden');
         statsView.classList.remove('active');
 
-        if (viewName === 'list') {
-            listViewBtn.classList.add('active');
-            listView.classList.remove('hidden');
-            listView.classList.add('active');
-        } else if (viewName === 'calendar') {
-            calendarViewBtn.classList.add('active');
-            calendarView.classList.remove('hidden');
-            calendarView.classList.add('active');
+        if (viewName === 'record') {
+            recordViewBtn.classList.add('active');
+            recordView.classList.remove('hidden');
+            recordView.classList.add('active');
+        } else {
+            historySection.classList.remove('hidden');
+            if (viewName === 'list') {
+                listViewBtn.classList.add('active');
+                listView.classList.remove('hidden');
+                listView.classList.add('active');
+            } else if (viewName === 'calendar') {
+                calendarViewBtn.classList.add('active');
+                calendarView.classList.remove('hidden');
+                calendarView.classList.add('active');
 
-            // Initialize or render calendar
-            if (!calendar) {
-                initCalendar();
-            } else {
-                calendar.render();
-                updateCalendarEvents(); // Refresh data
+                // Initialize or render calendar
+                if (!calendar) {
+                    initCalendar();
+                } else {
+                    calendar.render();
+                    updateCalendarEvents(); // Refresh data
+                }
+            } else if (viewName === 'stats') {
+                statsViewBtn.classList.add('active');
+                statsView.classList.remove('hidden');
+                statsView.classList.add('active');
+                renderStats();
             }
-        } else if (viewName === 'stats') {
-            statsViewBtn.classList.add('active');
-            statsView.classList.remove('hidden');
-            statsView.classList.add('active');
-            renderStats();
         }
     }
 
@@ -995,6 +1014,7 @@ document.addEventListener('DOMContentLoaded', () => {
         submitBtn.innerHTML = '<i data-lucide="save"></i> 記録を更新';
 
         // Scroll to form
+        switchView('record');
         form.scrollIntoView({ behavior: 'smooth' });
     };
 

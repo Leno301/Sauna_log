@@ -29,7 +29,35 @@
         </header>
 
         <main>
+            <div class="section-header-row" style="margin-bottom: 24px;">
+                <div class="view-tabs">
+                    <button id="recordViewBtn" class="view-tab active">
+                        <i data-lucide="pen-tool" class="icon-xs"></i> 記録
+                    </button>
+                    <button id="listViewBtn" class="view-tab">
+                        <i data-lucide="list" class="icon-xs"></i> リスト
+                    </button>
+                    <button id="calendarViewBtn" class="view-tab">
+                        <i data-lucide="calendar" class="icon-xs"></i> カレンダー
+                    </button>
+                    <button id="statsViewBtn" class="view-tab">
+                        <i data-lucide="bar-chart-2" class="icon-xs"></i> 統計
+                    </button>
+                </div>
+
+                <div class="backup-controls" style="display: flex; gap: 8px;">
+                    <button id="exportBtn" class="view-tab" title="保存">
+                        <i data-lucide="download" class="icon-xs"></i> 保存
+                    </button>
+                    <button id="importBtn" class="view-tab" title="復元">
+                        <i data-lucide="upload" class="icon-xs"></i> 復元
+                    </button>
+                    <input type="file" id="importFile" accept=".json" style="display: none;">
+                </div>
+            </div>
+
             <!-- 入力フォーム -->
+            <div id="recordView" class="view-content active">
             <section class="card form-section">
                 <h2><i data-lucide="pen-tool" class="icon-sm"></i> 新しい記録</h2>
                 <form id="saunaForm">
@@ -103,33 +131,9 @@
                     </button>
                 </form>
             </section>
+            </div>
 
-            <section class="history-section">
-                <div class="section-header-row">
-                    <h2><i data-lucide="history" class="icon-sm"></i> 過去のサ活</h2>
-                    <div class="view-tabs">
-                        <button id="listViewBtn" class="view-tab active">
-                            <i data-lucide="list" class="icon-xs"></i> リスト
-                        </button>
-                        <button id="calendarViewBtn" class="view-tab">
-                            <i data-lucide="calendar" class="icon-xs"></i> カレンダー
-                        </button>
-                        <button id="statsViewBtn" class="view-tab">
-                            <i data-lucide="bar-chart-2" class="icon-xs"></i> 統計
-                        </button>
-                    </div>
-
-                    <div class="backup-controls" style="display: flex; gap: 8px;">
-                        <button id="exportBtn" class="view-tab" title="保存">
-                            <i data-lucide="download" class="icon-xs"></i> 保存
-                        </button>
-                        <button id="importBtn" class="view-tab" title="復元">
-                            <i data-lucide="upload" class="icon-xs"></i> 復元
-                        </button>
-                        <input type="file" id="importFile" accept=".json" style="display: none;">
-                    </div>
-                </div>
-
+            <section id="historySection" class="history-section hidden">
                 <div class="search-section">
                     <div class="search-container">
                         <i data-lucide="search" class="search-icon"></i>
@@ -137,7 +141,7 @@
                     </div>
                 </div>
 
-                <div id="listView" class="view-content active">
+                <div id="listView" class="view-content">
                     <div id="saunaList" class="sauna-list">
                         <div class="empty-state">
                             <p>まだ記録がありません。<br>今日のととのいを記録しましょう！</p>
