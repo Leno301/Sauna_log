@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // DOM Elements
     const form = document.getElementById('saunaForm');
     const ratingInput = document.getElementById('rating');
@@ -63,7 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <div class="input-wrapper rating-wrapper">
                         <label>ととのい</label>
-                        <input type="number" name="saunaRating[]" placeholder="1-10" min="1" max="10" value="${defaultRating}" required class="set-rating-val">
+                        <input type="number" name="saunaRating[]" placeholder="1-10" min="1" max="10" value="${defaultRating}" class="set-rating-val">
                     </div>
                 </div>
                 <div class="set-extras-row">
@@ -71,7 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <input type="checkbox" name="aufguss[]" class="aufguss-check" ${defaultAufguss ? 'checked' : ''}>
                         <i data-lucide="wind" class="icon-xs"></i> アウフグース
                     </label>
-                    <input type="text" name="heatWaveMaster[]" placeholder="熱波師名 (任意)" value="${defaultMaster}" class="master-name-input">
+                    <input type="text" name="heatWaveMaster[]" placeholder="熱波師名 (任意)" value="${defaultMaster}" class="master-name-input" style="display: ${defaultAufguss ? 'block' : 'none'}; margin-top: 8px;">
                 </div>
             </div>
         `;
@@ -87,6 +87,19 @@ document.addEventListener('DOMContentLoaded', () => {
         row.querySelector('.remove-set-btn').addEventListener('click', () => {
             row.remove();
             updateSetNumbers();
+        });
+
+        // Add aufguss toggle listener
+        const aufgussCheck = row.querySelector('.aufguss-check');
+        const masterInput = row.querySelector('.master-name-input');
+        aufgussCheck.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                masterInput.style.display = 'block';
+                masterInput.focus();
+            } else {
+                masterInput.style.display = 'none';
+                masterInput.value = ''; // Clear value if unchecked
+            }
         });
     }
 
@@ -305,8 +318,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const dateFormatted = dateStr.replace(/:/g, '-'); // YYYY-MM-DD
         const visitDateTime = new Date(`${dateFormatted}T${timeStr}`);
 
+        const threeHoursBefore = new Date(visitDateTime.getTime() - 3 * 60 * 60 * 1000);
+        const startYear = threeHoursBefore.getFullYear();
+        const startMonth = String(threeHoursBefore.getMonth() + 1).padStart(2, '0');
+        const startDay = String(threeHoursBefore.getDate()).padStart(2, '0');
+        const startDateFormatted = `${startYear}-${startMonth}-${startDay}`;
+
         // Open-Meteo Forecast API (works for recent past)
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,relative_humidity_2m&start_date=${dateFormatted}&end_date=${dateFormatted}&timezone=Asia%2FTokyo`;
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,relative_humidity_2m&start_date=${startDateFormatted}&end_date=${dateFormatted}&timezone=Asia%2FTokyo`;
 
         try {
             outdoorTempInput.placeholder = "取得中...";
@@ -404,7 +423,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Form Submission
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
         e.preventDefault();
         try {
             // Collect set times and ratings
@@ -418,7 +437,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const masterInputs = setsContainer.querySelectorAll('input[name="heatWaveMaster[]"]');
 
             timeInputs.forEach((input, index) => {
-                const ratingVal = ratingInputs[index] ? parseInt(ratingInputs[index].value) : 0;
+                const ratingStr = ratingInputs[index] ? ratingInputs[index].value : '';
+                const ratingVal = ratingStr ? parseInt(ratingStr) : 0;
                 const timeVal = input.value;
                 const isAufguss = aufgussInputs[index] ? aufgussInputs[index].checked : false;
                 const masterName = masterInputs[index] ? masterInputs[index].value.trim() : '';
@@ -427,7 +447,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (ratingVal > 0 || timeVal || isAufguss || masterName) {
                     setsData.push({
                         time: timeVal,
-                        rating: ratingVal,
+                        rating: ratingStr ? ratingVal : '',
                         aufguss: isAufguss,
                         heatWaveMaster: masterName
                     });
@@ -442,8 +462,15 @@ document.addEventListener('DOMContentLoaded', () => {
             // Calculate Average
             const avgRating = setWithRatingCount > 0 ? (totalRating / setWithRatingCount).toFixed(1) : 0;
 
-            // Check if editing
             const editId = form.dataset.editId;
+            let existingCreatedAt = null;
+            if (editId) {
+                const records = await getRecords();
+                const existingRecord = records.find(r => r.id === editId);
+                if (existingRecord) {
+                    existingCreatedAt = existingRecord.createdAt;
+                }
+            }
 
             const recordData = {
                 id: editId || Date.now().toString(),
@@ -456,38 +483,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 sets: setsData, // Array of objects {time, rating}
                 memo: document.getElementById('memo').value,
                 images: currentImages,
-                createdAt: editId ? (getRecords().find(r => r.id === editId)?.createdAt || new Date().toISOString()) : new Date().toISOString(),
+                createdAt: existingCreatedAt || new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             };
 
             if (editId) {
-                updateRecord(recordData);
-                delete form.dataset.editId;
-                const submitBtn = form.querySelector('.submit-btn');
-                submitBtn.innerHTML = '<i data-lucide="save"></i> 記録する';
+                await updateRecord(recordData);
             } else {
-                saveRecord(recordData);
+                await saveRecord(recordData);
             }
-            form.reset();
-            clearImage();
 
-            // Reset defaults
-            visitDateInput.valueAsDate = new Date();
-            document.getElementById('outdoorTemp').value = "";
-            document.getElementById('outdoorHumidity').value = ""; // Reset Outdoor Humidity
-            ratingValue.textContent = "-";
-            overallRatingValue.textContent = "5";
-            document.getElementById('rating').value = "";
-            document.getElementById('overallRating').value = 5;
+            resetFormState();
 
-            // Reset Sets to 3
-            setsContainer.innerHTML = '';
-            setCounter = 0;
-            addSetRow();
-            addSetRow();
-            addSetRow();
-
-            loadRecords();
+            await loadRecords();
             switchView('list');
             saunaList.scrollIntoView({ behavior: 'smooth' });
         } catch (err) {
@@ -497,38 +505,58 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Data Management
-    function saveRecord(record) {
-        const records = getRecords();
-        records.unshift(record);
-        localStorage.setItem('sauna-log-data', JSON.stringify(records));
+    // Migration: localStorage -> localForage
+    const STORAGE_KEY = 'sauna-log-data';
+    localforage.config({
+        name: 'SaunaLogApp',
+        storeName: 'records'
+    });
+
+    try {
+        const oldData = localStorage.getItem(STORAGE_KEY);
+        if (oldData) {
+            const parsedOldData = JSON.parse(oldData);
+            await localforage.setItem(STORAGE_KEY, parsedOldData);
+            localStorage.removeItem(STORAGE_KEY);
+            console.log('Data migrated to localForage successfully.');
+        }
+    } catch (e) {
+        console.error('Migration failed:', e);
     }
 
-    function updateRecord(updatedRecord) {
-        const records = getRecords();
+    async function saveRecord(record) {
+        const records = await getRecords();
+        records.unshift(record);
+        await localforage.setItem(STORAGE_KEY, records);
+    }
+
+    async function updateRecord(updatedRecord) {
+        const records = await getRecords();
         const index = records.findIndex(r => r.id === updatedRecord.id);
         if (index !== -1) {
             records[index] = updatedRecord;
-            localStorage.setItem('sauna-log-data', JSON.stringify(records));
+            await localforage.setItem(STORAGE_KEY, records);
         }
     }
 
-    function getRecords() {
-        const data = localStorage.getItem('sauna-log-data');
-        return data ? JSON.parse(data) : [];
+    async function getRecords() {
+        const data = await localforage.getItem(STORAGE_KEY);
+        return data ? data : [];
     }
 
-    function deleteRecord(id) {
+    async function deleteRecord(id) {
         if (!confirm('この記録を削除してもよろしいですか？')) return;
 
-        const records = getRecords().filter(r => r.id !== id);
-        localStorage.setItem('sauna-log-data', JSON.stringify(records));
-        loadRecords();
+        let records = await getRecords();
+        records = records.filter(r => r.id !== id);
+        await localforage.setItem(STORAGE_KEY, records);
+        await loadRecords();
         updateCalendarEvents();
     }
 
     // Backup Functions
-    exportBtn.addEventListener('click', () => {
-        const records = getRecords();
+    exportBtn.addEventListener('click', async () => {
+        const records = await getRecords();
         const dataStr = JSON.stringify(records, null, 2);
         const blob = new Blob([dataStr], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -559,7 +587,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
             try {
                 const importedData = JSON.parse(e.target.result);
 
@@ -568,8 +596,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error('Invalid data format');
                 }
 
-                localStorage.setItem('sauna-log-data', JSON.stringify(importedData));
-                loadRecords();
+                await localforage.setItem(STORAGE_KEY, importedData);
+                await loadRecords();
                 updateCalendarEvents();
                 alert('データの復元が完了しました。');
             } catch (err) {
@@ -583,13 +611,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Search Input Logic
-    searchInput.addEventListener('input', () => {
-        loadRecords();
+    searchInput.addEventListener('input', async () => {
+        await loadRecords();
     });
 
     // UI Rendering
-    function loadRecords() {
-        const records = getRecords();
+    async function loadRecords() {
+        const records = await getRecords();
         const filterText = searchInput.value.trim().toLowerCase();
 
         saunaList.innerHTML = '';
@@ -699,10 +727,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             ${escapeHtml(record.facilityName)}
                             <a href="https://sauna-ikitai.com/search?keyword=${encodeURIComponent(record.facilityName)}" 
                                target="_blank" 
-                               class="external-link" 
+                               class="ikitai-btn" 
                                title="サウナイキタイで見る"
                                onclick="event.stopPropagation()">
-                                <i data-lucide="external-link" class="icon-xs"></i>
+                                <i data-lucide="search" class="icon-xs" style="width: 14px; height: 14px;"></i> サウナイキタイで検索
                             </a>
                         </h3>
                         <div class="log-date">
@@ -716,7 +744,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="log-ratings-row">
                     <div class="log-rating-chip" title="ととのい度">
                         <i data-lucide="sparkles" class="icon-xs"></i>
-                        ととのい: <span class="rating-value">${record.rating}</span>
+                        ととのい: <span class="rating-value">${record.rating == 0 ? '-' : record.rating}</span>
                     </div>
                     <div class="log-rating-chip" title="総合評価">
                         <i data-lucide="award" class="icon-xs"></i>
@@ -785,8 +813,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Wiring up delete
-    document.addEventListener('delete-record', (e) => {
-        deleteRecord(e.detail);
+    document.addEventListener('delete-record', async (e) => {
+        await deleteRecord(e.detail);
     });
 
     // Tab Switching Logic
@@ -865,7 +893,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 right: 'today'
             },
             height: 'auto',
-            events: getCalendarEvents(),
+            events: async function (info, successCallback, failureCallback) {
+                try {
+                    const events = await getCalendarEvents();
+                    successCallback(events);
+                } catch (e) {
+                    failureCallback(e);
+                }
+            },
             eventClick: function (info) {
                 switchView('list');
             },
@@ -881,8 +916,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Statistics Logic
-    function renderStats() {
-        const records = getRecords();
+    async function renderStats() {
+        const records = await getRecords();
         statsContainer.innerHTML = '';
 
         if (records.length === 0) {
@@ -959,9 +994,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Expose editRecord to window
-    window.editRecord = function (id) {
+    window.editRecord = async function (id) {
         // ... (existing editRecord implementation) ...
-        const records = getRecords();
+        const records = await getRecords();
         const record = records.find(r => r.id === id);
         if (!record) return;
 
@@ -1012,15 +1047,17 @@ document.addEventListener('DOMContentLoaded', () => {
         form.dataset.editId = id;
         const submitBtn = form.querySelector('.submit-btn');
         submitBtn.innerHTML = '<i data-lucide="save"></i> 記録を更新';
+        const cancelBtn = document.getElementById('cancelEditBtn');
+        if (cancelBtn) cancelBtn.classList.remove('hidden');
 
         // Scroll to form
         switchView('record');
         form.scrollIntoView({ behavior: 'smooth' });
     };
 
-    function getCalendarEvents() {
+    async function getCalendarEvents() {
         // ... (existing implementation)
-        const records = getRecords();
+        const records = await getRecords();
         return records.map(record => {
             // Determine color based on rating
             let color = 'var(--accent-color)';
@@ -1040,8 +1077,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateCalendarEvents() {
         if (!calendar) return;
-        calendar.removeAllEvents();
-        calendar.addEventSource(getCalendarEvents());
+        calendar.refetchEvents();
+    }
+
+    const cancelEditBtn = document.getElementById('cancelEditBtn');
+    if (cancelEditBtn) {
+        cancelEditBtn.addEventListener('click', () => {
+            resetFormState();
+            switchView('list');
+            saunaList.scrollIntoView({ behavior: 'smooth' });
+        });
+    }
+
+    function resetFormState() {
+        delete form.dataset.editId;
+        const submitBtn = form.querySelector('.submit-btn');
+        if (submitBtn) submitBtn.innerHTML = '<i data-lucide="save"></i> 記録する';
+
+        const cancelBtn = document.getElementById('cancelEditBtn');
+        if (cancelBtn) cancelBtn.classList.add('hidden');
+
+        form.reset();
+        clearImage();
+
+        visitDateInput.valueAsDate = new Date();
+        document.getElementById('outdoorTemp').value = "";
+        document.getElementById('outdoorHumidity').value = "";
+        ratingValue.textContent = "-";
+        overallRatingValue.textContent = "5";
+        document.getElementById('rating').value = "";
+        document.getElementById('overallRating').value = 5;
+
+        setsContainer.innerHTML = '';
+        setCounter = 0;
+        addSetRow();
+        addSetRow();
+        addSetRow();
+
+        if (window.lucide) lucide.createIcons();
     }
 
     loadRecords();

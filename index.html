@@ -16,6 +16,8 @@
     <!-- FullCalendar -->
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
     <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+    <!-- localForage -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
 </head>
 
 <body>
@@ -58,79 +60,84 @@
 
             <!-- 入力フォーム -->
             <div id="recordView" class="view-content active">
-            <section class="card form-section">
-                <h2><i data-lucide="pen-tool" class="icon-sm"></i> 新しい記録</h2>
-                <form id="saunaForm">
-                    <div class="form-group">
-                        <label for="facilityName">施設名</label>
-                        <input type="text" id="facilityName" placeholder="例: かるまる池袋" required>
-                    </div>
-
-                    <div class="form-row">
+                <section class="card form-section">
+                    <h2><i data-lucide="pen-tool" class="icon-sm"></i> 新しい記録</h2>
+                    <form id="saunaForm">
                         <div class="form-group">
-                            <label for="visitDate">日付</label>
-                            <input type="date" id="visitDate" required>
+                            <label for="facilityName">施設名</label>
+                            <input type="text" id="facilityName" placeholder="例: かるまる池袋" required>
                         </div>
-                        <div class="form-row">
-                            <div class="input-wrapper">
-                                <label for="outdoorTemp"><i data-lucide="thermometer" class="icon-xs"></i> 外気温
-                                    (℃)</label>
-                                <input type="text" id="outdoorTemp" placeholder="自動取得または入力">
-                            </div>
-                            <div class="input-wrapper">
-                                <label for="outdoorHumidity"><i data-lucide="droplets" class="icon-xs"></i> 湿度
-                                    (%)</label>
-                                <input type="text" id="outdoorHumidity" placeholder="自動取得または入力">
-                            </div>
-                        </div>
-                        <div class="rating-group">
-                            <label>ととのい度 (平均) <span id="ratingValue" class="rating-display">-</span>/10</label>
-                            <div class="rating-note">各セットの入力から自動計算されます</div>
-                            <input type="hidden" id="rating" value="">
-                        </div>
-                        <div class="rating-group">
-                            <label for="overallRating">総合評価 <span id="overallRatingValue"
-                                    class="rating-display">5</span>/10</label>
-                            <div class="rating-control">
-                                <span class="rating-label-min">1</span>
-                                <input type="range" id="overallRating" min="1" max="10" step="1" value="5">
-                                <span class="rating-label-max">10</span>
-                            </div>
-                        </div>
-                    </div>
 
-                    <div class="form-group">
-                        <div class="sets-header">
-                            <label>サウナ時間 (分/セット)</label>
-                            <button type="button" id="addSetBtn" class="add-set-btn">
-                                <i data-lucide="plus-circle" class="icon-xs"></i> 追加
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="visitDate">日付</label>
+                                <input type="date" id="visitDate" required>
+                            </div>
+                            <div class="form-row">
+                                <div class="input-wrapper">
+                                    <label for="outdoorTemp"><i data-lucide="thermometer" class="icon-xs"></i> 外気温
+                                        (℃)</label>
+                                    <input type="text" id="outdoorTemp" placeholder="自動取得または入力">
+                                </div>
+                                <div class="input-wrapper">
+                                    <label for="outdoorHumidity"><i data-lucide="droplets" class="icon-xs"></i> 湿度
+                                        (%)</label>
+                                    <input type="text" id="outdoorHumidity" placeholder="自動取得または入力">
+                                </div>
+                            </div>
+                            <div class="rating-group">
+                                <label>ととのい度 (平均) <span id="ratingValue" class="rating-display">-</span>/10</label>
+                                <div class="rating-note">各セットの入力から自動計算されます</div>
+                                <input type="hidden" id="rating" value="">
+                            </div>
+                            <div class="rating-group">
+                                <label for="overallRating">総合評価 <span id="overallRatingValue"
+                                        class="rating-display">5</span>/10</label>
+                                <div class="rating-control">
+                                    <span class="rating-label-min">1</span>
+                                    <input type="range" id="overallRating" min="1" max="10" step="1" value="5">
+                                    <span class="rating-label-max">10</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <div class="sets-header">
+                                <label>サウナ時間 (分/セット)</label>
+                                <button type="button" id="addSetBtn" class="add-set-btn">
+                                    <i data-lucide="plus-circle" class="icon-xs"></i> 追加
+                                </button>
+                            </div>
+                            <div id="setsContainer" class="sets-container">
+                                <!-- Sets will be added here by JS -->
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="memo">感想メモ</label>
+                            <textarea id="memo" rows="3" placeholder="最高のアウフグースでした..."></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label>写真</label>
+                            <div id="dropZone" class="image-upload-area">
+                                <i data-lucide="camera" class="upload-icon"></i>
+                                <p>写真を追加</p>
+                                <input type="file" id="imageInput" accept="image/*" multiple style="display: none;">
+                                <div id="previewArea" class="preview-grid hidden"></div>
+                            </div>
+                        </div>
+
+                        <div class="form-actions" style="display: flex; gap: 8px;">
+                            <button type="submit" class="submit-btn" style="flex: 1;">
+                                <i data-lucide="save"></i> 記録する
+                            </button>
+                            <button type="button" id="cancelEditBtn" class="cancel-btn hidden" style="flex: 1;">
+                                <i data-lucide="x"></i> キャンセル
                             </button>
                         </div>
-                        <div id="setsContainer" class="sets-container">
-                            <!-- Sets will be added here by JS -->
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="memo">感想メモ</label>
-                        <textarea id="memo" rows="3" placeholder="最高のアウフグースでした..."></textarea>
-                    </div>
-
-                    <div class="form-group">
-                        <label>写真</label>
-                        <div id="dropZone" class="image-upload-area">
-                            <i data-lucide="camera" class="upload-icon"></i>
-                            <p>写真を追加</p>
-                            <input type="file" id="imageInput" accept="image/*" multiple style="display: none;">
-                            <div id="previewArea" class="preview-grid hidden"></div>
-                        </div>
-                    </div>
-
-                    <button type="submit" class="submit-btn">
-                        <i data-lucide="save"></i> 記録する
-                    </button>
-                </form>
-            </section>
+                    </form>
+                </section>
             </div>
 
             <section id="historySection" class="history-section hidden">

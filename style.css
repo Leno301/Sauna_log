@@ -1138,3 +1138,49 @@ input[type="range"]::-webkit-slider-runnable-track {
 .search-input::placeholder {
     color: rgba(148, 163, 184, 0.5);
 }
+
+.cancel-btn {
+    background-color: transparent;
+    border: 1px solid var(--text-secondary);
+    color: var(--text-primary);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+
+.cancel-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.cancel-btn.hidden {
+    display: none !important;
+}
+
+.ikitai-btn {
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin-left: 10px;
+    color: var(--secondary-accent);
+    background-color: rgba(56, 189, 248, 0.1);
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    padding: 4px 10px;
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s;
+    vertical-align: middle;
+}
+
+.ikitai-btn:hover {
+    background-color: rgba(56, 189, 248, 0.2);
+    border-color: rgba(56, 189, 248, 0.5);
+    transform: translateY(-1px);
+}
