@@ -127,6 +127,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Image Upload Handling
     let currentImages = [];
+    // Only the first photo of the current record provides photo info
+    // (shooting date, weather, facility name). Later photos are stored
+    // as images only and never overwrite that info.
+    let photoInfoAttempted = false;
 
     dropZone.addEventListener('click', (e) => {
         imageInput.click();
@@ -157,19 +161,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     function handleImages(files) {
         if (!files || files.length === 0) return;
 
-        // Try each uploaded image in order until one provides a usable
-        // shooting time + GPS position. The first image alone may be a
-        // screenshot / edited copy without EXIF, while a later one has it.
-        let exifDateHandled = false;
-        let weatherHandled = false;
+        const imageFiles = Array.from(files).filter((file) => file.type.startsWith('image/'));
+        if (imageFiles.length === 0) return;
 
-        Array.from(files).forEach((file) => {
-            if (!file.type.startsWith('image/')) return;
+        // Photo info comes from the first photo only. Mark the attempt
+        // synchronously so a later upload batch cannot overwrite the
+        // first photo's date / weather / facility name, even if the
+        // first photo has no EXIF or GPS data.
+        if (!photoInfoAttempted) {
+            photoInfoAttempted = true;
+            const firstFile = imageFiles[0];
 
             // EXIF extraction (from the original file object, before compression)
             if (typeof EXIF !== 'undefined' && EXIF.getData) {
-                EXIF.getData(file, function () {
-                    if (weatherHandled) return;
+                EXIF.getData(firstFile, function () {
                     const dateOriginal = EXIF.getTag(this, "DateTimeOriginal")
                         || EXIF.getTag(this, "DateTimeDigitized")
                         || EXIF.getTag(this, "DateTime");
@@ -187,14 +192,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const [y, m, d] = datePart.split(':');
                     if (!y || !m || !d) return;
                     const formattedDate = `${y}-${m}-${d}`;
+                    visitDateInput.value = formattedDate;
 
                     if (lat && lon && latRef && lonRef) {
                         const decimalLat = convertDMSToDD(lat, latRef);
                         const decimalLon = convertDMSToDD(lon, lonRef);
                         if (Number.isFinite(decimalLat) && Number.isFinite(decimalLon)) {
-                            exifDateHandled = true;
-                            weatherHandled = true;
-                            visitDateInput.value = formattedDate;
                             fetchWeather(decimalLat, decimalLon, dateOriginal);
                             fetchFacilityName(decimalLat, decimalLon);
                         } else {
@@ -204,17 +207,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                         }
                     } else {
                         console.log("No GPS data found");
-                        if (!exifDateHandled) {
-                            exifDateHandled = true;
-                            visitDateInput.value = formattedDate;
-                        }
                         outdoorTempInput.placeholder = "位置情報なし";
                         document.getElementById('outdoorHumidity').placeholder = "位置情報なし";
                     }
                 });
             }
+        }
 
-            // Compress and process image
+        // Compress and process every image (photos themselves are all kept)
+        imageFiles.forEach((file) => {
             compressImage(file, (compressedDataUrl) => {
                 currentImages.push(compressedDataUrl);
                 updatePreview();
@@ -496,11 +497,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     window.removeImage = function (index) {
         currentImages.splice(index, 1);
+        if (currentImages.length === 0) {
+            photoInfoAttempted = false;
+        }
         updatePreview();
     };
 
     function clearImage() {
         currentImages = [];
+        photoInfoAttempted = false;
         updatePreview();
         imageInput.value = '';
     }
@@ -1103,6 +1108,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
             clearImage();
         }
+        photoInfoAttempted = currentImages.length > 0;
 
         // Handle Sets
         setsContainer.innerHTML = ''; // Clear existing
