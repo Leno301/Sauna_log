@@ -157,34 +157,59 @@ document.addEventListener('DOMContentLoaded', async () => {
     function handleImages(files) {
         if (!files || files.length === 0) return;
 
-        Array.from(files).forEach((file, index) => {
+        // Try each uploaded image in order until one provides a usable
+        // shooting time + GPS position. The first image alone may be a
+        // screenshot / edited copy without EXIF, while a later one has it.
+        let exifDateHandled = false;
+        let weatherHandled = false;
+
+        Array.from(files).forEach((file) => {
             if (!file.type.startsWith('image/')) return;
 
-            // EXIF extraction for the first image (before compression to preserve metadata if needed, 
-            // though we extract from the original file object so it's fine)
-            if (index === 0) {
+            // EXIF extraction (from the original file object, before compression)
+            if (typeof EXIF !== 'undefined' && EXIF.getData) {
                 EXIF.getData(file, function () {
-                    const dateOriginal = EXIF.getTag(this, "DateTimeOriginal");
+                    if (weatherHandled) return;
+                    const dateOriginal = EXIF.getTag(this, "DateTimeOriginal")
+                        || EXIF.getTag(this, "DateTimeDigitized")
+                        || EXIF.getTag(this, "DateTime");
                     const lat = EXIF.getTag(this, "GPSLatitude");
                     const lon = EXIF.getTag(this, "GPSLongitude");
                     const latRef = EXIF.getTag(this, "GPSLatitudeRef");
                     const lonRef = EXIF.getTag(this, "GPSLongitudeRef");
 
-                    if (dateOriginal) {
-                        // Format: "YYYY:MM:DD HH:MM:SS" -> "YYYY-MM-DD"
-                        const [datePart, timePart] = dateOriginal.split(' ');
-                        const [y, m, d] = datePart.split(':');
-                        const formattedDate = `${y}-${m}-${d}`;
-                        visitDateInput.value = formattedDate;
+                    if (!dateOriginal || typeof dateOriginal !== 'string') {
+                        return;
+                    }
+                    // Format: "YYYY:MM:DD HH:MM:SS" -> "YYYY-MM-DD"
+                    const datePart = dateOriginal.split(' ')[0];
+                    if (!datePart) return;
+                    const [y, m, d] = datePart.split(':');
+                    if (!y || !m || !d) return;
+                    const formattedDate = `${y}-${m}-${d}`;
 
-                        if (lat && lon && latRef && lonRef) {
-                            const decimalLat = convertDMSToDD(lat, latRef);
-                            const decimalLon = convertDMSToDD(lon, lonRef);
+                    if (lat && lon && latRef && lonRef) {
+                        const decimalLat = convertDMSToDD(lat, latRef);
+                        const decimalLon = convertDMSToDD(lon, lonRef);
+                        if (Number.isFinite(decimalLat) && Number.isFinite(decimalLon)) {
+                            exifDateHandled = true;
+                            weatherHandled = true;
+                            visitDateInput.value = formattedDate;
                             fetchWeather(decimalLat, decimalLon, dateOriginal);
                             fetchFacilityName(decimalLat, decimalLon);
                         } else {
-                            console.log("No GPS data found");
+                            console.log("Invalid GPS data found");
+                            outdoorTempInput.placeholder = "位置情報が無効です";
+                            document.getElementById('outdoorHumidity').placeholder = "位置情報が無効です";
                         }
+                    } else {
+                        console.log("No GPS data found");
+                        if (!exifDateHandled) {
+                            exifDateHandled = true;
+                            visitDateInput.value = formattedDate;
+                        }
+                        outdoorTempInput.placeholder = "位置情報なし";
+                        document.getElementById('outdoorHumidity').placeholder = "位置情報なし";
                     }
                 });
             }
@@ -305,87 +330,145 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function convertDMSToDD(dms, ref) {
-        let dd = dms[0] + dms[1] / 60 + dms[2] / (60 * 60);
+        if (!Array.isArray(dms) || dms.length < 3) return NaN;
+        const toNumber = (v) => {
+            if (typeof v === 'number') return v;
+            if (v && typeof v === 'object' && Number.isFinite(v.numerator) && Number.isFinite(v.denominator) && v.denominator !== 0) {
+                return v.numerator / v.denominator;
+            }
+            return Number(v);
+        };
+        const deg = toNumber(dms[0]);
+        const min = toNumber(dms[1]);
+        const sec = toNumber(dms[2]);
+        if (!Number.isFinite(deg) || !Number.isFinite(min) || !Number.isFinite(sec)) return NaN;
+        let dd = deg + min / 60 + sec / (60 * 60);
         if (ref === "S" || ref === "W") {
             dd = dd * -1;
         }
         return dd;
     }
 
+    // Parse an Asia/Tokyo wall-clock time ("YYYY-MM-DDTHH:mm" or with seconds)
+    // to epoch ms, independent of the browser's timezone.
+    function parseJstDateTime(dateTimeStr) {
+        const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(dateTimeStr);
+        if (!m) return NaN;
+        return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)) - 9 * 60 * 60 * 1000;
+    }
+
+    function formatJstDate(epochMs) {
+        const d = new Date(epochMs + 9 * 60 * 60 * 1000);
+        const y = d.getUTCFullYear();
+        const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        return `${y}-${mo}-${day}`;
+    }
+
+    async function fetchHourlyFromEndpoint(baseUrl, lat, lon, startDate, endDate) {
+        const url = `${baseUrl}?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,relative_humidity_2m&start_date=${startDate}&end_date=${endDate}&timezone=Asia%2FTokyo`;
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status} from ${baseUrl}`);
+        }
+        const data = await response.json();
+        if (!data.hourly || !Array.isArray(data.hourly.time) || !Array.isArray(data.hourly.temperature_2m) || !Array.isArray(data.hourly.relative_humidity_2m)) {
+            throw new Error("Invalid API response");
+        }
+        return data.hourly;
+    }
+
     async function fetchWeather(lat, lon, dateOriginal) {
-        // dateOriginal format: "YYYY:MM:DD HH:MM:SS"
-        const [dateStr, timeStr] = dateOriginal.split(' ');
-        const dateFormatted = dateStr.replace(/:/g, '-'); // YYYY-MM-DD
-        const visitDateTime = new Date(`${dateFormatted}T${timeStr}`);
+        // dateOriginal format: "YYYY:MM:DD HH:MM:SS" (camera local time, treated as JST).
+        // Window: [photoTime - 3h, photoTime] = from 3 hours before the photo
+        // to 3 hours after that retraced time. The min-max over this window
+        // is shown as the outdoor temperature / humidity trend.
+        const humidityInput = document.getElementById('outdoorHumidity');
+        const match = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/.exec(dateOriginal || '');
+        if (!match) {
+            console.error("Invalid DateTimeOriginal:", dateOriginal);
+            outdoorTempInput.placeholder = "取得失敗";
+            humidityInput.placeholder = "取得失敗";
+            return;
+        }
+        const photoTimeMs = Date.UTC(+match[1], +match[2] - 1, +match[3], +match[4], +match[5], +match[6]) - 9 * 60 * 60 * 1000;
+        const windowStartMs = photoTimeMs - 3 * 60 * 60 * 1000;
+        const windowEndMs = photoTimeMs;
+        const startDateFormatted = formatJstDate(windowStartMs);
+        const endDateFormatted = formatJstDate(windowEndMs);
 
-        const threeHoursBefore = new Date(visitDateTime.getTime() - 3 * 60 * 60 * 1000);
-        const startYear = threeHoursBefore.getFullYear();
-        const startMonth = String(threeHoursBefore.getMonth() + 1).padStart(2, '0');
-        const startDay = String(threeHoursBefore.getDate()).padStart(2, '0');
-        const startDateFormatted = `${startYear}-${startMonth}-${startDay}`;
-
-        // Open-Meteo Forecast API (works for recent past)
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,relative_humidity_2m&start_date=${startDateFormatted}&end_date=${dateFormatted}&timezone=Asia%2FTokyo`;
+        // Endpoint choice: the Forecast API only covers the recent past
+        // (it returns 400 for dates months ago), the Historical Forecast API
+        // covers the past few years, and the Archive API (ERA5) covers back
+        // to 1940 but lags a few days. Try them in order and fall through
+        // to the next one when an endpoint fails or has no usable data
+        // in the 3-hour window.
+        const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
+        const HISTORICAL_FORECAST_URL = 'https://historical-forecast-api.open-meteo.com/v1/forecast';
+        const ARCHIVE_URL = 'https://archive-api.open-meteo.com/v1/archive';
+        const isRecent = (Date.now() - photoTimeMs) < 5 * 24 * 60 * 60 * 1000;
+        const endpoints = isRecent
+            ? [FORECAST_URL, HISTORICAL_FORECAST_URL, ARCHIVE_URL]
+            : [HISTORICAL_FORECAST_URL, ARCHIVE_URL, FORECAST_URL];
 
         try {
             outdoorTempInput.placeholder = "取得中...";
-            document.getElementById('outdoorHumidity').placeholder = "取得中...";
+            humidityInput.placeholder = "取得中...";
 
-            const response = await fetch(url);
-            const data = await response.json();
-
-            if (!data.hourly || !data.hourly.time || !data.hourly.temperature_2m || !data.hourly.relative_humidity_2m) {
-                throw new Error("Invalid API response");
+            let found = null;
+            let lastError = null;
+            for (const baseUrl of endpoints) {
+                try {
+                    const hourly = await fetchHourlyFromEndpoint(baseUrl, lat, lon, startDateFormatted, endDateFormatted);
+                    const tempCandidates = [];
+                    const humidCandidates = [];
+                    hourly.time.forEach((tStr, i) => {
+                        const tMs = parseJstDateTime(tStr);
+                        if (Number.isFinite(tMs) && tMs >= windowStartMs && tMs <= windowEndMs) {
+                            if (Number.isFinite(hourly.temperature_2m[i])) tempCandidates.push(hourly.temperature_2m[i]);
+                            if (Number.isFinite(hourly.relative_humidity_2m[i])) humidCandidates.push(hourly.relative_humidity_2m[i]);
+                        }
+                    });
+                    if (tempCandidates.length > 0 || humidCandidates.length > 0) {
+                        found = { tempCandidates, humidCandidates };
+                        break;
+                    }
+                } catch (err) {
+                    lastError = err;
+                    console.warn("Weather endpoint failed, trying next:", baseUrl, err);
+                }
             }
 
-            const times = data.hourly.time; // array of "YYYY-MM-DDThh:mm"
-            const temps = data.hourly.temperature_2m;
-            const humidities = data.hourly.relative_humidity_2m;
+            if (!found) {
+                if (lastError) console.error("Weather fetch failed on all endpoints", lastError);
+                outdoorTempInput.placeholder = "データなし";
+                humidityInput.placeholder = "データなし";
+                return;
+            }
 
-            // Filter times: [visitDateTime - 3h, visitDateTime]
-            const tempCandidates = [];
-            const humidCandidates = [];
-            const threeHoursBefore = new Date(visitDateTime.getTime() - 3 * 60 * 60 * 1000);
+            const formatRange = (values) => {
+                const max = Math.max(...values);
+                const min = Math.min(...values);
+                return max === min ? `${max}` : `${min}-${max}`;
+            };
 
-            times.forEach((tStr, i) => {
-                const tDate = new Date(tStr);
-                if (tDate >= threeHoursBefore && tDate <= visitDateTime) {
-                    tempCandidates.push(temps[i]);
-                    humidCandidates.push(humidities[i]);
-                }
-            });
-
-            if (tempCandidates.length > 0) {
-                const maxTemp = Math.max(...tempCandidates);
-                const minTemp = Math.min(...tempCandidates);
-                if (maxTemp === minTemp) {
-                    outdoorTempInput.value = `${maxTemp}`;
-                } else {
-                    outdoorTempInput.value = `${minTemp}-${maxTemp}`;
-                }
+            if (found.tempCandidates.length > 0) {
+                outdoorTempInput.value = formatRange(found.tempCandidates);
             } else {
                 outdoorTempInput.placeholder = "データなし";
             }
 
-            if (humidCandidates.length > 0) {
-                const maxHumid = Math.max(...humidCandidates);
-                const minHumid = Math.min(...humidCandidates);
-                if (maxHumid === minHumid) {
-                    document.getElementById('outdoorHumidity').value = `${maxHumid}`;
-                } else {
-                    document.getElementById('outdoorHumidity').value = `${minHumid}-${maxHumid}`;
-                }
+            if (found.humidCandidates.length > 0) {
+                humidityInput.value = formatRange(found.humidCandidates);
             } else {
-                document.getElementById('outdoorHumidity').placeholder = "データなし";
+                humidityInput.placeholder = "データなし";
             }
 
         } catch (e) {
             console.error("Weather fetch failed", e);
             outdoorTempInput.placeholder = "取得失敗";
-            document.getElementById('outdoorHumidity').placeholder = "取得失敗";
+            humidityInput.placeholder = "取得失敗";
         }
-
-
     }
 
     function updatePreview() {
@@ -1089,6 +1172,39 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    // "入力をクリア" button: delete everything entered for the record
+    // being edited (text, sets, photos, ratings) and return the form
+    // to its initial state. Saved records are not affected.
+    const clearFormBtn = document.getElementById('clearFormBtn');
+    if (clearFormBtn) {
+        clearFormBtn.addEventListener('click', () => {
+            if (hasFormInput() && !confirm('入力中の内容をすべてクリアしますか？\n（保存済みの記録には影響しません）')) {
+                return;
+            }
+            resetFormState();
+        });
+    }
+
+    function hasFormInput() {
+        if (currentImages.length > 0) return true;
+        if (form.dataset.editId) return true;
+        const textIds = ['facilityName', 'outdoorTemp', 'outdoorHumidity', 'memo'];
+        for (const id of textIds) {
+            const el = document.getElementById(id);
+            if (el && el.value.trim() !== '') return true;
+        }
+        if (overallRatingInput && overallRatingInput.value !== '5') return true;
+        const setInputs = setsContainer.querySelectorAll('input');
+        for (const input of setInputs) {
+            if (input.type === 'checkbox') {
+                if (input.checked) return true;
+            } else if (input.value.trim() !== '') {
+                return true;
+            }
+        }
+        return false;
+    }
+
     function resetFormState() {
         delete form.dataset.editId;
         const submitBtn = form.querySelector('.submit-btn');
@@ -1100,9 +1216,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         form.reset();
         clearImage();
 
+        const facilityInput = document.getElementById('facilityName');
+        if (facilityInput) facilityInput.placeholder = "例: かるまる池袋";
         visitDateInput.valueAsDate = new Date();
         document.getElementById('outdoorTemp').value = "";
         document.getElementById('outdoorHumidity').value = "";
+        document.getElementById('outdoorTemp').placeholder = "自動取得または入力";
+        document.getElementById('outdoorHumidity').placeholder = "自動取得または入力";
         ratingValue.textContent = "-";
         overallRatingValue.textContent = "5";
         document.getElementById('rating').value = "";

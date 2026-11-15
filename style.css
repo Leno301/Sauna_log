@@ -1162,6 +1162,25 @@ input[type="range"]::-webkit-slider-runnable-track {
     display: none !important;
 }
 
+.clear-btn {
+    background-color: transparent;
+    border: 1px solid var(--text-secondary);
+    color: var(--text-primary);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+
+.clear-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
 .ikitai-btn {
     font-size: 0.75rem;
     font-weight: 500;
